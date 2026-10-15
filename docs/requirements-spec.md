@@ -90,9 +90,9 @@
 
 ### FR-08 实体与关系建立
 
-- 输入：手工新建实体（名称、类 IRI、别名）、手工新建关系（起终点实体、对象属性 IRI、证据锚点）、从提案确认或拒绝。
-- 处理规则：实体标识由名称归一化后生成；写入时按本体定义校验，校验失败转待处理队列。确认后的关系状态为 confirmed，参与检索扩展；未确认的提案不参与。
-- 关联验收：V7、V8。
+- 输入：手工新建实体（名称、类 IRI、别名）、手工新建关系（起终点实体、对象属性 IRI、证据锚点）、从提案确认或拒绝（含实体提案与关系提案）。
+- 处理规则：实体标识由名称归一化后生成；写入时按本体定义校验，校验失败转待处理队列。确认后的关系状态为 confirmed，参与检索扩展；未确认的提案不参与。关系提案确认时按对象属性的 domain 与 range 推定两端实体类并自动创建实体（名称+类相同则复用同一实体）；对象属性不存在或 domain/range 未声明时，提案保持待处理并附错误原因；写入前执行 domain/range 校验，校验失败提案保持待处理。
+- 关联验收：V7、V8、V11。
 
 ### FR-09 实体归一
 
@@ -109,8 +109,8 @@
 
 ### FR-11 任务与花费面板
 
-- 输出：按库聚合的同步进度、失败重试计数、嵌入请求条数、令牌数与费用估算、待处理队列积压数。
-- 处理规则：数据来源为任务记录（见 5.3 节 OpsTask），费用估算 = 令牌数 × 单价（单价来自嵌入实测记录，见 4.4 节环境变量）。
+- 输出：按库聚合的同步进度、失败重试计数、嵌入请求条数、令牌数与费用估算、LLM 抽取调用数与费用估算、待处理队列积压数。
+- 处理规则：数据来源为任务记录（见 5.3 节 OpsTask），费用估算 = 令牌数 × 单价（嵌入与抽取各用各的单价，均来自实测记录，见 4.4 节环境变量）。
 - 关联验收：V1、V2。
 
 ### FR-12 对外接口
@@ -123,6 +123,16 @@
 - 输入：备份命令或界面入口；界面提供索引重建两个入口。
 - 处理规则：备份脚本先停止全部服务，再对 Qdrant、Neo4j、Redis 三个命名卷做一致性快照（详见实施计划备份任务），连同权威源目录的版本库状态一并归档。界面提供结构重建与全量重嵌入两个入口：结构重建仅按当前切片规则重新切片与写载荷，不调用嵌入服务；全量重嵌入删除 collection 后重新切片并嵌入，执行前必须返回预估切片数与嵌入请求条数并二次确认。嵌入模型或向量维度变更不修改既有库，走新建库路径：新库指向同一权威源子目录并同步，验证通过后归档旧库。恢复脚本按第 8 节 V4 判据验证。
 - 关联验收：V4。
+
+### FR-14 LLM 辅助抽取（手动）
+
+- 触发条件：本体界面手动发起，范围为本库全部文档或指定文档（scope: all | file）。
+- 前置条件：库存在且存在已同步切片；`KB_EXTRACT_MODEL` 已配置。
+- 输入：库标识、范围、目标模型参数（见 4.4 节环境变量）。
+- 处理规则：不重新切片、不调用嵌入、不写回索引、不修改本体。读取选定范围的现有索引切片正文（Qdrant 载荷），逐切片调用文本模型做抽取；模型输出限定为实体与关系两类：实体项含 `term`（必须为切片正文子串）与 `class_iri`（必须在本体签名内），关系项含 `from`、`to`（均为正文子串）与 `type_iri`（必须在本体签名内）；违反上述约束的输出丢弃并计入任务统计。实体提案落待处理队列（kind=proposal），关系提案落待处理队列（kind=relation_proposal）。失败按嵌入错误分类处理（见 6.3 节），RATE 与 UPSTREAM 重试 2 次（间隔 2、4 秒），最终失败切片转待处理队列（kind=extract_failed），不中断整体任务。
+- 输出：任务标识（kind=extract）；任务记录含抽取调用数、令牌数、费用估算、成功提案数、丢弃数与失败数。
+- 异常处理：AUTH、INPUT、BILLING 类错误立即失败并记入任务错误码；未同步的库或空范围返回预估为 0 并提示先同步。
+- 关联验收：V11。
 
 ## 4. 接口契约
 
@@ -140,6 +150,8 @@
 | POST | /corpora/{id}/sync | 触发同步 | `scope: all \| file`，`file_path?`，返回 `task_id` |
 | GET | /corpora/{id}/rebuild/estimate | 重建预估 | 切片数、嵌入请求条数、费用估算 |
 | POST | /corpora/{id}/rebuild | 触发重建 | `mode: structure \| reembed`，返回 `task_id` |
+| GET | /corpora/{id}/extract/estimate | LLM 抽取预估 | 切片数（即抽取调用数上限） |
+| POST | /corpora/{id}/extract | 触发 LLM 抽取 | `scope: all \| file`，`file_path?`，返回 `task_id` |
 | GET | /tasks/{task_id} | 任务状态 | 见 5.3 节 OpsTask |
 | GET | /corpora/{id}/assets | 文档列表 | 相对路径、哈希、修改时间、切片数 |
 | GET | /corpora/{id}/assets/{rel_path}/chunks | 切片树 | 见 FR-03 输出 |
@@ -189,6 +201,9 @@
 | KB_CORPUS_ROOT | 容器内权威源挂载点，默认 /corpus | 固定 |
 | KB_POLL_INTERVAL_MINUTES | 定时轮询间隔，默认 30 | 可覆盖 |
 | KB_ONTOLOGY_EXPORT_DIR | TTL 导出目录，默认 /ontology | 固定 |
+| KB_EXTRACT_MODEL | LLM 抽取模型名，默认 qwen3.8-max（以实测为准） | 可覆盖 |
+| KB_EXTRACT_PRICE_PER_1K_TOKENS | LLM 抽取费用估算单价，取自实测记录 | 可覆盖 |
+| KB_EXTRACT_CONCURRENCY | LLM 抽取并发上限，默认 2 | 可覆盖 |
 | QDRANT_URL / QDRANT_API_KEY | Qdrant 连接 | 编排注入 |
 | NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD | Neo4j 连接 | 编排注入 |
 | REDIS_URL | 任务队列连接 | 编排注入 |
@@ -221,8 +236,8 @@
 | :Entity | eid | eid, corpus_id, label, class_iri, aliases[], ont_version |
 | :Anchor | (rel_path, seq, sha256) | rel_path, seq, sha256（锚点节点，经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联） |
 | :Relation | 无 | type_iri, evidence_anchors（JSON 字符串）, state(confirmed) |
-| :PendingItem | pid | kind(proposal/violation/embed_failed), payload, attempts, last_error_code, status |
-| :OpsTask | task_id | task_id, kind(sync/rebuild), corpus_id, status, doc_total, doc_changed, doc_removed, chunks, tokens, embed_retries, cost_estimate, proposals, error_code, started_at, finished_at |
+| :PendingItem | pid | kind(proposal/relation_proposal/violation/embed_failed/extract_failed), payload, attempts, last_error_code, status |
+| :OpsTask | task_id | task_id, kind(sync/rebuild/extract), corpus_id, status, doc_total, doc_changed, doc_removed, chunks, tokens, embed_retries, cost_estimate, proposals, extract_calls, extract_tokens, extract_failed, extract_discarded, extract_cost_estimate, error_code, started_at, finished_at |
 
 关系：`(:Entity)-[:INSTANCE_OF]->(:OntClass)`，`(:Entity)-[:ANCHOR_OF]->(:Anchor)`，`(:Entity)-[:REL]->(:Entity)`（属性键为上述 Relation 字段）。锚点不存实体属性而建模为独立节点：Neo4j 属性不支持对象数组，且锚点可能被多个实体共享。实例写入按 OntClass 与 OntObjProp 的 domain 与 range 校验。任务记录以 `Ops` 前缀标签与知识数据隔离，所有知识类查询显式限定标签集，不出现 Ops 数据。
 
@@ -254,6 +269,14 @@
 5. 按锚点回源读取切片所属小节完整上下文；读不到则该结果标记失效并记入任务日志。结果中的命中片段取自向量载荷中的切片正文，上下文取自权威源回读，两者分开返回。
 6. 返回结构携带锚点三元组。
 
+### 6.5 LLM 抽取
+
+1. 输入：选定范围的现有索引切片（Qdrant 载荷的 `text`）与本体签名（库内全部类的 IRI、中文标签、别名、定义，以及全部对象属性的 IRI、中文标签、domain、range）。
+2. 调用：逐切片调用文本模型（`KB_EXTRACT_MODEL`，百炼兼容模式），并发上限 `KB_EXTRACT_CONCURRENCY`（默认 2）；prompt 要求模型仅输出 JSON：`{"entities":[{"term","class_iri"}],"relations":[{"from","to","type_iri"}]}`。
+3. 校验：`term`/`from`/`to` 必须为该切片正文子串（逐字匹配），`class_iri`/`type_iri` 必须在本体签名内；不满足的输出条目丢弃并计入 `extract_discarded`。
+4. 落库：实体项 → PendingItem kind=proposal（payload 含 class_iri、term、label、anchor）；关系项 → kind=relation_proposal（payload 含 from、to、type_iri、anchor）。
+5. 失败处理：错误分类复用 6.3 节五类；RATE 与 UPSTREAM 重试 2 次（间隔 2、4 秒），其余立即失败；最终失败的切片转 kind=extract_failed（payload 含 chunk_id 与错误码），不中断整体任务。
+
 ## 7. 非功能需求规格
 
 | 编号 | 条目 | 目标与验证方法 |
@@ -269,6 +292,7 @@
 | NFR-09 | 可观测性 | 任务状态、失败原因、错误码、重试次数、队列积压持久记录并按库聚合；验证方法 FR-11 判据 |
 | NFR-10 | 性能 | 千级文档：单文件同步不含嵌入等待小于 2 秒；检索端到端 P95 小于 1.5 秒；全量重嵌入 30 分钟内。验证方法：V1 执行时记录实测值 |
 | NFR-11 | 镜像 | 加速前缀拉取、锁次版本标签；验证：compose 文件内无 latest |
+| NFR-12 | 抽取成本可控 | LLM 抽取仅手动触发且限定范围，触发前预估调用数并确认；任务记录调用数、令牌数、费用估算；单价来自实测；验证方法 V11 |
 
 ## 8. 验收对照
 
@@ -284,6 +308,7 @@
 | V8 提案闭环 | FR-02、FR-08、FR-09 |
 | V9 访问与密钥边界 | NFR-03、NFR-04、NFR-06 |
 | V10 对外接口 | FR-04、FR-12 |
+| V11 LLM 抽取闭环 | FR-08、FR-14、NFR-12 |
 
 ## 9. 待确认项与闭环方式
 
@@ -292,4 +317,4 @@
 1. 百炼嵌入参数（批上限、单条长度、维度取值、单价）：实施计划嵌入实测任务闭环，产出实测记录文档。
 2. Dify 外部知识库契约：实施计划适配任务先行实测再固化实现，本说明书 4.2 节以实测结果修订。
 3. 权威源宿主位置：本说明书按"项目目录下的 knowledge-lib-base-folder"执行，改动只需调整编排中的挂载变量。
-4. 模型辅助抽取时机：不在本说明书范围内，待 V8 判据跑通后依据别名词典覆盖率另行决策。
+4. 模型辅助抽取时机：已决策按路径 A 实施（手动触发的 LLM 辅助抽取，FR-14）；抽取模型选型与单价由实施计划实测任务闭环（默认 qwen3.8-max，以实测结果回填 4.4 节）。
