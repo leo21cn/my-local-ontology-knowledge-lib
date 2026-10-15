@@ -4696,7 +4696,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8101/mcp
 curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8101/mcp
 ```
 
-Expected: 第一条返回含 `records` 数组的 JSON；第二条返回 401（无令牌）；第三条返回 200 或 406（流式端点对普通 GET 的响应），不返回 404。
+Expected: 第一条返回含 `records` 数组的 JSON；第二条返回 401（无令牌）；第三条返回非 401（流式端点对普通 GET 的重定向与 404 等行为以 mcp SDK 版本为准）。
 
 - [ ] **Step 8: 打通 Dify 与 center-kb 的 Docker 网络并注册（需人工操作）**
 
@@ -5017,4 +5017,16 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
 **执行前须先解决的两项外部输入**：`DASHSCOPE_API_KEY` 需向用户索取（Task 3 Step 1、Task 14 全程）；Dify 界面侧的外部知识库注册需用户手工完成（Task 12 Step 8）。
 
 **本目录尚未初始化版本库**：Task 0 的 Step 3 负责初始化；若用户不采用版本库，全部 commit 步骤跳过，其余步骤与验收不受影响。
+
+## 实施修正记录
+
+以下修正为实施过程中基于实测环境作出的必要调整，与上文代码块存在差异处以此节为准：
+
+1. **锚点建模改为 `(:Anchor)` 节点**（Task 6、7、9、10）：Neo4j 属性只允许基本类型数组，不支持对象数组，`Entity.anchors` 无法作为属性存储。锚点改为 `(:Anchor {rel_path, seq, sha256})` 节点（复合唯一约束），经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联；实体节点不再持有 anchors 属性。neo4j_store 新增 `ensure_anchor_link`、`list_entity_anchors`、`count_entity_anchors`、`move_anchors_to`、`remove_anchor_links`、`list_entities_with_anchors`；proposals 的 `ensure_entity`、`find_entities_by_anchor_rel_path`、`split_entity` 与 search 的 `EXPAND_QUERY`、`CLASS_MATCH_QUERY`、graph_view 的锚点计数均改为经锚点节点查询。Relation 的 `evidence_anchors` 以 JSON 字符串存储。
+2. **本体 IRI 路由使用 `{iri:path}` 转换器**（Task 10）：`/ontology/classes/{iri}` 等六个读写路由改为 `{iri:path}`，避免 IRI 中编码的 `/` 破坏路径匹配。
+3. **变更资产先删旧点再写入**（Task 8）：全量同步中，内容变更的资产在 upsert 新切片前先按 rel_path 删除旧点位，保证 V2 判据「点数不增长」。
+4. **测试隔离**：test_sync 以 monkeypatch 替换 `kb.sync.embed_with_retry`（respx 的 side_effect 响应缺少 content-type，return_value 风格保留在 test_embed）；同步集成测试开始前清理同名库与 collection；test_api 中创建实体的测试使用唯一标签（entity_id 为确定性哈希，跨运行残留会导致串库）。
+5. **版本锁定**：`mcp>=1.2,<2`（v2 移除 FastMCP 且 API 变更）；`openai>=1.40,<2`（3.x 自带 fork 的 httpx，respx 无法拦截）；respx 测试默认 `assert_all_mocked` 会拦截 Qdrant 等真实请求，sync 测试改用函数替换方案。
+6. **构建期网络**：宿主机与容器内 pip 直连缓慢或挂起，app/Dockerfile 的 `pip install` 显式使用清华镜像 `-i https://pypi.tuna.tsinghua.edu.cn/simple`；宿主机 venv 安装加 `--no-cache-dir --no-build-isolation`（pip 写本地 HTTP 缓存在本机挂起）。
+7. **MCP 端点普通 GET 行为**：流式端点对无 Accept 头的 GET 返回 307/404 而非 200/406，Task 12 Step 7 的预期已改为「非 401」。
 

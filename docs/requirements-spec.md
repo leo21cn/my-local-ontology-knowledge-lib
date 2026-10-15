@@ -218,12 +218,13 @@
 | :OntObjProp | iri | iri, prefix_local, domain_iri, range_iri, characteristics[] |
 | :OntDataProp | iri | iri, prefix_local, domain_iri, xsd_range |
 | :OntVersion | corpus_id+seq | corpus_id, seq, exported_at |
-| :Entity | eid | eid, label, class_iri, aliases[], anchors[], ont_version |
-| :Relation | 无 | type_iri, evidence_anchors[], state(confirmed) |
+| :Entity | eid | eid, corpus_id, label, class_iri, aliases[], ont_version |
+| :Anchor | (rel_path, seq, sha256) | rel_path, seq, sha256（锚点节点，经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联） |
+| :Relation | 无 | type_iri, evidence_anchors（JSON 字符串）, state(confirmed) |
 | :PendingItem | pid | kind(proposal/violation/embed_failed), payload, attempts, last_error_code, status |
 | :OpsTask | task_id | task_id, kind(sync/rebuild), corpus_id, status, doc_total, doc_changed, doc_removed, chunks, tokens, embed_retries, cost_estimate, proposals, error_code, started_at, finished_at |
 
-关系：`(:Entity)-[:INSTANCE_OF]->(:OntClass)`，`(:Entity)-[:REL]->(:Entity)`（属性键为上述 Relation 字段）。实例写入按 OntClass 与 OntObjProp 的 domain 与 range 校验。任务记录以 `Ops` 前缀标签与知识数据隔离，所有知识类查询显式限定标签集，不出现 Ops 数据。
+关系：`(:Entity)-[:INSTANCE_OF]->(:OntClass)`，`(:Entity)-[:ANCHOR_OF]->(:Anchor)`，`(:Entity)-[:REL]->(:Entity)`（属性键为上述 Relation 字段）。锚点不存实体属性而建模为独立节点：Neo4j 属性不支持对象数组，且锚点可能被多个实体共享。实例写入按 OntClass 与 OntObjProp 的 domain 与 range 校验。任务记录以 `Ops` 前缀标签与知识数据隔离，所有知识类查询显式限定标签集，不出现 Ops 数据。
 
 ### 5.4 其他结构
 
