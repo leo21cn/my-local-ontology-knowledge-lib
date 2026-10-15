@@ -76,10 +76,10 @@
 
 ### FR-06 本体注册表
 
-- 输入：类、对象属性、数据属性、公理的增删改查，字段见 5.3 节。
+- 输入：类、对象属性、数据属性、公理的增删改查（字段见 5.3 节）、从本体提案确认（FR-14 阶段一）。
 - 处理规则：见 6.2 节本体编辑与标准物化。保存时执行 OWL 2 RL 子集校验（见 NFR-01 附则），同时更新库内定义与 TTL 导出物，二者同事务；生成新 OntVersion 序号。
 - 输出：保存结果、违规构造拒绝原因、受影响的实例违规清单（转待处理队列）。
-- 关联验收：V5、V6。
+- 关联验收：V5、V6、V11。
 
 ### FR-07 实例校验
 
@@ -124,13 +124,16 @@
 - 处理规则：备份脚本先停止全部服务，再对 Qdrant、Neo4j、Redis 三个命名卷做一致性快照（详见实施计划备份任务），连同权威源目录的版本库状态一并归档。界面提供结构重建与全量重嵌入两个入口：结构重建仅按当前切片规则重新切片与写载荷，不调用嵌入服务；全量重嵌入删除 collection 后重新切片并嵌入，执行前必须返回预估切片数与嵌入请求条数并二次确认。嵌入模型或向量维度变更不修改既有库，走新建库路径：新库指向同一权威源子目录并同步，验证通过后归档旧库。恢复脚本按第 8 节 V4 判据验证。
 - 关联验收：V4。
 
-### FR-14 LLM 辅助抽取（手动）
+### FR-14 LLM 辅助知识建模（两阶段，手动）
 
-- 触发条件：本体界面手动发起，范围为本库全部文档或指定文档（scope: all | file）。
-- 前置条件：库存在且存在已同步切片；`KB_EXTRACT_MODEL` 已配置。
+- 触发条件：本体界面手动发起，范围为本库全部文档或指定文档（scope: all | file）。阶段一「本体归纳」与阶段二「实体与关系抽取」为两个独立入口，先归纳后抽取。
+- 前置条件：库存在；阶段一要求存在已同步切片，阶段二要求本库已有已确认本体要素（无则拒绝并提示先归纳或手工建本体）；`KB_EXTRACT_MODEL` 已配置。
 - 输入：库标识、范围、目标模型参数（见 4.4 节环境变量）。
-- 处理规则：不重新切片、不调用嵌入、不写回索引、不修改本体。读取选定范围的现有索引切片正文（Qdrant 载荷），逐切片调用文本模型做抽取；模型输出限定为实体与关系两类：实体项含 `term`（必须为切片正文子串）与 `class_iri`（必须在本体签名内），关系项含 `from`、`to`（均为正文子串）与 `type_iri`（必须在本体签名内）；违反上述约束的输出丢弃并计入任务统计。实体提案落待处理队列（kind=proposal），关系提案落待处理队列（kind=relation_proposal）。失败按嵌入错误分类处理（见 6.3 节），RATE 与 UPSTREAM 重试 2 次（间隔 2、4 秒），最终失败切片转待处理队列（kind=extract_failed），不中断整体任务。
-- 输出：任务标识（kind=extract）；任务记录含抽取调用数、令牌数、费用估算、成功提案数、丢弃数与失败数。
+- 处理规则：
+  - 阶段一本体归纳：从选定范围**采样最多 `KB_INDUCT_SAMPLE_LIMIT`（默认 20）个切片**（全库时均匀采样，单文档时取该文档前 N 片），逐切片调用文本模型归纳候选本体要素：类（local_name、中文标签、定义、别名）与对象属性（local_name、中文标签、定义、domain/range 以中文标签引用类）。输出经校验后以 kind=ontology_proposal 落待处理队列，payload 携带系统生成的完整 IRI 预览与证据锚点；校验不通过（local_name 格式非法、标签/定义缺失、正文无支撑）的条目丢弃并计数。本体提案确认时写入本体注册表（复用 OWL 2 RL 校验与 TTL 物化路径）：类直接入册；对象属性的 domain/range 标签解析为本库已确认类（含同批先确认的类），解析不到则该提案保持待处理并附错误原因；IRI 与现有要素冲突时确认失败并保持待处理。
+  - 阶段二实体与关系抽取：不重新切片、不调用嵌入、不写回索引。读取选定范围的现有索引切片正文（Qdrant 载荷），按**本库已确认本体**签名逐切片调用文本模型；模型输出限定为实体与关系两类：实体项含 `term`（必须为切片正文子串）与 `class_iri`（必须在本体签名内），关系项含 `from`、`to`（均为正文子串）与 `type_iri`（必须在本体签名内）；违反约束的输出丢弃并计入任务统计。实体提案落待处理队列（kind=proposal），关系提案落待处理队列（kind=relation_proposal）。
+  - 两阶段共同的失败处理：错误按嵌入错误分类处理（见 6.3 节），RATE 与 UPSTREAM 重试 2 次（间隔 2、4 秒），最终失败切片转待处理队列（kind=extract_failed），不中断整体任务。
+- 输出：任务标识（kind=induct / extract）；任务记录含调用数、令牌数、费用估算、成功提案数、丢弃数与失败数。
 - 异常处理：AUTH、INPUT、BILLING 类错误立即失败并记入任务错误码；未同步的库或空范围返回预估为 0 并提示先同步。
 - 关联验收：V11。
 
@@ -151,7 +154,8 @@
 | GET | /corpora/{id}/rebuild/estimate | 重建预估 | 切片数、嵌入请求条数、费用估算 |
 | POST | /corpora/{id}/rebuild | 触发重建 | `mode: structure \| reembed`，返回 `task_id` |
 | GET | /corpora/{id}/extract/estimate | LLM 抽取预估 | 切片数（即抽取调用数上限） |
-| POST | /corpora/{id}/extract | 触发 LLM 抽取 | `scope: all \| file`，`file_path?`，返回 `task_id` |
+| POST | /corpora/{id}/extract | 触发 LLM 实体与关系抽取 | `scope: all \| file`，`file_path?`，返回 `task_id` |
+| POST | /corpora/{id}/induct | 触发 LLM 本体归纳 | `scope: all \| file`，`file_path?`，返回 `task_id`（采样上限见 6.5 节） |
 | GET | /tasks/{task_id} | 任务状态 | 见 5.3 节 OpsTask |
 | GET | /corpora/{id}/assets | 文档列表 | 相对路径、哈希、修改时间、切片数 |
 | GET | /corpora/{id}/assets/{rel_path}/chunks | 切片树 | 见 FR-03 输出 |
@@ -204,6 +208,7 @@
 | KB_EXTRACT_MODEL | LLM 抽取模型名，默认 qwen3.8-max（以实测为准） | 可覆盖 |
 | KB_EXTRACT_PRICE_PER_1K_TOKENS | LLM 抽取费用估算单价，取自实测记录 | 可覆盖 |
 | KB_EXTRACT_CONCURRENCY | LLM 抽取并发上限，默认 2 | 可覆盖 |
+| KB_INDUCT_SAMPLE_LIMIT | 本体归纳的切片采样上限，默认 20 | 可覆盖 |
 | QDRANT_URL / QDRANT_API_KEY | Qdrant 连接 | 编排注入 |
 | NEO4J_URI / NEO4J_USER / NEO4J_PASSWORD | Neo4j 连接 | 编排注入 |
 | REDIS_URL | 任务队列连接 | 编排注入 |
@@ -236,8 +241,8 @@
 | :Entity | eid | eid, corpus_id, label, class_iri, aliases[], ont_version |
 | :Anchor | (rel_path, seq, sha256) | rel_path, seq, sha256（锚点节点，经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联） |
 | :Relation | 无 | type_iri, evidence_anchors（JSON 字符串）, state(confirmed) |
-| :PendingItem | pid | kind(proposal/relation_proposal/violation/embed_failed/extract_failed), payload, attempts, last_error_code, status |
-| :OpsTask | task_id | task_id, kind(sync/rebuild/extract), corpus_id, status, doc_total, doc_changed, doc_removed, chunks, tokens, embed_retries, cost_estimate, proposals, extract_calls, extract_tokens, extract_failed, extract_discarded, extract_cost_estimate, error_code, started_at, finished_at |
+| :PendingItem | pid | kind(ontology_proposal/proposal/relation_proposal/violation/embed_failed/extract_failed), payload, attempts, last_error_code, status |
+| :OpsTask | task_id | task_id, kind(sync/rebuild/induct/extract), corpus_id, status, doc_total, doc_changed, doc_removed, chunks, tokens, embed_retries, cost_estimate, proposals, extract_calls, extract_tokens, extract_failed, extract_discarded, extract_cost_estimate, error_code, started_at, finished_at |
 
 关系：`(:Entity)-[:INSTANCE_OF]->(:OntClass)`，`(:Entity)-[:ANCHOR_OF]->(:Anchor)`，`(:Entity)-[:REL]->(:Entity)`（属性键为上述 Relation 字段）。锚点不存实体属性而建模为独立节点：Neo4j 属性不支持对象数组，且锚点可能被多个实体共享。实例写入按 OntClass 与 OntObjProp 的 domain 与 range 校验。任务记录以 `Ops` 前缀标签与知识数据隔离，所有知识类查询显式限定标签集，不出现 Ops 数据。
 
@@ -269,9 +274,17 @@
 5. 按锚点回源读取切片所属小节完整上下文；读不到则该结果标记失效并记入任务日志。结果中的命中片段取自向量载荷中的切片正文，上下文取自权威源回读，两者分开返回。
 6. 返回结构携带锚点三元组。
 
-### 6.5 LLM 抽取
+### 6.5 LLM 本体归纳
 
-1. 输入：选定范围的现有索引切片（Qdrant 载荷的 `text`）与本体签名（库内全部类的 IRI、中文标签、别名、定义，以及全部对象属性的 IRI、中文标签、domain、range）。
+1. 输入：选定范围**采样**的索引切片（上限 `KB_INDUCT_SAMPLE_LIMIT`，默认 20；全库范围按切片均匀采样，单文档范围取该文档前 N 片）。
+2. 调用：逐切片调用文本模型（`KB_EXTRACT_MODEL`，百炼兼容模式），并发上限 `KB_EXTRACT_CONCURRENCY`；prompt 要求模型仅输出 JSON：`{"classes":[{"local_name","label","definition","aliases"}],"object_properties":[{"local_name","label","definition","domain","range"}]}`，其中 domain/range 用中文标签引用类。
+3. 校验：`local_name` 匹配 `^[A-Za-z][A-Za-z0-9_]*$`；`label` 与 `definition` 非空；不满足的输出条目丢弃并计入 `extract_discarded`。
+4. 落库：通过校验的候选以 kind=ontology_proposal 落待处理队列，payload 含 `element_kind`（class/object_property）、`local_name`、`label`、`definition`、`aliases`、`domain`、`range`、`iri_preview`（`http://kb.local/o/<prefix>#<local_name>`）与证据锚点。
+5. 确认语义：class 确认 → 经 OWL 2 RL 校验后写入 OntClass 并物化 TTL；object_property 确认 → domain/range 标签解析为本库已确认类（含同批先确认的类），解析失败或 IRI 冲突时保持待处理并附错误原因，成功则写入 OntObjProp 并物化 TTL。
+
+### 6.6 LLM 实体与关系抽取
+
+1. 输入：选定范围的现有索引切片（Qdrant 载荷的 `text`）与本库**已确认**本体签名（库内全部类的 IRI、中文标签、别名、定义，以及全部对象属性的 IRI、中文标签、domain、range）。
 2. 调用：逐切片调用文本模型（`KB_EXTRACT_MODEL`，百炼兼容模式），并发上限 `KB_EXTRACT_CONCURRENCY`（默认 2）；prompt 要求模型仅输出 JSON：`{"entities":[{"term","class_iri"}],"relations":[{"from","to","type_iri"}]}`。
 3. 校验：`term`/`from`/`to` 必须为该切片正文子串（逐字匹配），`class_iri`/`type_iri` 必须在本体签名内；不满足的输出条目丢弃并计入 `extract_discarded`。
 4. 落库：实体项 → PendingItem kind=proposal（payload 含 class_iri、term、label、anchor）；关系项 → kind=relation_proposal（payload 含 from、to、type_iri、anchor）。
@@ -308,7 +321,7 @@
 | V8 提案闭环 | FR-02、FR-08、FR-09 |
 | V9 访问与密钥边界 | NFR-03、NFR-04、NFR-06 |
 | V10 对外接口 | FR-04、FR-12 |
-| V11 LLM 抽取闭环 | FR-08、FR-14、NFR-12 |
+| V11 LLM 知识建模闭环 | FR-06、FR-08、FR-14、NFR-12 |
 
 ## 9. 待确认项与闭环方式
 
@@ -317,4 +330,4 @@
 1. 百炼嵌入参数（批上限、单条长度、维度取值、单价）：实施计划嵌入实测任务闭环，产出实测记录文档。
 2. Dify 外部知识库契约：实施计划适配任务先行实测再固化实现，本说明书 4.2 节以实测结果修订。
 3. 权威源宿主位置：本说明书按"项目目录下的 knowledge-lib-base-folder"执行，改动只需调整编排中的挂载变量。
-4. 模型辅助抽取时机：已决策按路径 A 实施（手动触发的 LLM 辅助抽取，FR-14）；抽取模型选型与单价由实施计划实测任务闭环（默认 qwen3.8-max，以实测结果回填 4.4 节）。
+4. 模型辅助知识建模时机：已决策按路径 A 实施（手动触发的 LLM 辅助知识建模：本体归纳 + 实体关系抽取两阶段，FR-14）；模型选型与单价由实施计划实测任务闭环（默认 qwen3.8-max，实测可用）。

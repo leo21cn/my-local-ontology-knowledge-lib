@@ -23,7 +23,7 @@
 - 命令执行环境：bash 代码块默认在 Git Bash 中执行（工作区对应 `/d/szp/work/my-center-knowledge-lib`）；Windows 原生命令（`ipconfig`、browser-use MCP 调用等）在 PowerShell 或各自工具中执行，文中另有说明的除外。
 - 错误信封：应用业务错误统一为 `{"error": {"code": "...", "message": "..."}}`；请求校验错误（422）保留 FastAPI 默认结构。
 - MCP 端点与 HTTP、Dify 契约共用同一令牌校验分支（NFR-06），MCP 客户端须在请求头携带 `Authorization: Bearer <KB_AUTH_TOKEN>`。
-- LLM 抽取为手动触发能力（FR-14）：仅在显式调用 `POST /corpora/{id}/extract` 时产生模型调用；抽取模型名 `KB_EXTRACT_MODEL`（默认 qwen3.8-max，以实测回填）、单价 `KB_EXTRACT_PRICE_PER_1K_TOKENS`（实测）、并发 `KB_EXTRACT_CONCURRENCY`（默认 2）；任务记录抽取调用数、令牌数、丢弃数、失败数与费用估算。
+- LLM 知识建模为手动触发能力（FR-14），分两阶段：本体归纳（`POST /corpora/{id}/induct`，默认采样上限 `KB_INDUCT_SAMPLE_LIMIT=20`）与实体关系抽取（`POST /corpora/{id}/extract`，本体为空时拒绝）；仅在显式调用时产生模型调用；模型名 `KB_EXTRACT_MODEL`（默认 qwen3.8-max）、单价 `KB_EXTRACT_PRICE_PER_1K_TOKENS`（实测）、并发 `KB_EXTRACT_CONCURRENCY`（默认 2）；任务记录调用数、令牌数、丢弃数、失败数与费用估算。
 - api 与 worker 容器显式清空 `HTTP_PROXY` 与 `HTTPS_PROXY` 并设 `NO_PROXY="*"`，确保对百炼直连、不继承宿主代理。
 - 提交粒度：每个任务末尾至少一次 conventional commit（`feat:`、`fix:`、`chore:` 前缀）。
 - 验收判据 V1 至 V10 见 requirements-spec.md 第 8 节；执行记录落 `docs/acceptance/records.md`。
@@ -5007,18 +5007,18 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
 
 ---
 
-### Task 15: LLM 辅助抽取（手动）
+### Task 15: LLM 辅助知识建模（两阶段，手动）
 
-落实：FR-08（关系提案确认）、FR-14、NFR-12，requirements-spec.md 第 6.5 节；闭环 concept.md 第 10 节待确认第 4、5 项。
+落实：FR-06（本体提案确认）、FR-08（关系提案确认）、FR-14、NFR-12，requirements-spec.md 第 6.5、6.6 节；闭环 concept.md 第 10 节待确认第 4、5 项。
 
 **Files:**
-- Create: `scripts/probe_extraction.py`
+- Create: `scripts/probe_extraction.py`（含本体归纳 schema 实测）
 - Create: `docs/research/extraction-probe.md`（实测记录）
-- Create: `app/kb/extract.py`
+- Create: `app/kb/extract.py`（实体抽取 + 本体归纳）
 - Create: `app/tests/test_extract.py`
-- Modify: `app/kb/proposals.py`（`generate_llm_proposals`、`create_relation_proposal`、resolve 扩展）、`app/kb/neo4j_store.py`（OpsTask 抽取字段）、`app/kb/sync.py`（`run_extract`、`estimate_extract`）、`app/kb/worker.py`（`extract_job`）、`app/kb/config.py`、`app/kb/schemas.py`、`app/kb/routers/corpora.py`、`app/kb/routers/stats.py`、`.env.example`
-- Modify: `web/src/pages/Ontology.vue`（LLM 抽取区）、`web/src/pages/Pending.vue`（新 kind 展示与裁决）、`web/src/pages/Stats.vue`（抽取卡片）
-- Create: `app/tests/test_proposals.py` 增补关系提案测试、`app/tests/test_sync.py` 增补 run_extract 集成测试
+- Modify: `app/kb/proposals.py`（`generate_llm_proposals`、`create_relation_proposal`、`create_ontology_proposal`、resolve 扩展）、`app/kb/neo4j_store.py`（OpsTask 抽取字段）、`app/kb/sync.py`（`run_extract`、`estimate_extract`、`run_induct`）、`app/kb/worker.py`（`extract_job`、`induct_job`）、`app/kb/config.py`、`app/kb/schemas.py`、`app/kb/routers/corpora.py`、`app/kb/routers/stats.py`、`.env.example`
+- Modify: `web/src/pages/Ontology.vue`（两阶段区：本体归纳 + 实体抽取）、`web/src/pages/Pending.vue`（新 kind 展示与裁决）、`web/src/pages/Stats.vue`（抽取卡片）
+- Create: `app/tests/test_proposals.py` 增补关系提案与本体提案测试、`app/tests/test_sync.py` 增补 run_extract/run_induct 集成测试
 
 **Interfaces:**
 - Consumes: `kb.embed.classify_error`、`kb.neo4j_store`、`kb.proposals`、`kb.qdrant_store`。
@@ -5026,19 +5026,24 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
   - `kb.extract.build_signature(ontology: dict) -> dict`
   - `kb.extract.build_prompt(signature: dict, text: str) -> str`
   - `kb.extract.parse_extraction(raw: str, text: str, signature: dict) -> dict`（返回 `entities`、`relations`、`discarded`；term 子串与 IRI 白名单校验）
-  - `async kb.extract.extract_chunk(settings, text, signature) -> tuple[dict, int]`（解析结果与令牌数；失败抛 `kb.embed.EmbedError`）
-  - `async kb.extract.extract_chunk_with_retry(settings, text, signature) -> tuple[dict, int, int]`（RATE/UPSTREAM 重试 2 次，间隔 2、4 秒）
+  - `kb.extract.build_induction_prompt(text: str) -> str`
+  - `kb.extract.parse_induction(raw: str, text: str) -> dict`（返回 `classes`、`object_properties`、`discarded`；local_name 格式、label/definition 非空、正文支撑校验）
+  - `async kb.extract.extract_chunk(settings, text, signature) -> tuple[dict, int]`
+  - `async kb.extract.extract_chunk_with_retry(settings, text, signature) -> tuple[dict, int, int]`
+  - `async kb.extract.induct_chunk_with_retry(settings, text) -> tuple[dict, int, int]`（RATE/UPSTREAM 重试 2 次，间隔 2、4 秒）
   - `kb.proposals.generate_llm_proposals(driver, corpus_id, chunks, extracted) -> int`
   - `kb.proposals.create_relation_proposal(driver, corpus_id, from_term, to_term, type_iri, anchor) -> str`
-  - `kb.proposals.resolve_pending` 扩展：kind=relation_proposal 的 confirm 分支
+  - `kb.proposals.create_ontology_proposal(driver, corpus_id, element_kind, entry, anchor) -> str`
+  - `kb.proposals.resolve_pending` 扩展：kind=relation_proposal 与 kind=ontology_proposal 的 confirm 分支
   - `async kb.sync.run_extract(settings, corpus_id, scope="all", file_path=None, task_id=None) -> str`（任务 kind=extract）
-  - `async kb.sync.estimate_extract(settings, corpus_id) -> dict`（返回 `chunks`）
-  - `kb.worker.extract_job(ctx, corpus_id, scope, file_path) -> str`
-  - `POST /api/v1/corpora/{id}/extract`、`GET /api/v1/corpora/{id}/extract/estimate`
+  - `async kb.sync.run_induct(settings, corpus_id, scope="all", file_path=None, task_id=None) -> str`（任务 kind=induct，采样上限 `KB_INDUCT_SAMPLE_LIMIT`）
+  - `async kb.sync.estimate_extract(settings, corpus_id) -> dict`（返回 `chunks`、`estimated_minutes`）
+  - `kb.worker.extract_job(ctx, corpus_id, scope, file_path) -> str`、`kb.worker.induct_job(ctx, corpus_id, scope, file_path) -> str`
+  - `POST /api/v1/corpora/{id}/extract`、`POST /api/v1/corpora/{id}/induct`、`GET /api/v1/corpora/{id}/extract/estimate`
 
-- [ ] **Step 1: 抽取模型实测**
+- [ ] **Step 1: 知识建模模型实测**
 
-写 `scripts/probe_extraction.py`：用 openai 兼容模式调用 `KB_EXTRACT_MODEL`（默认 qwen3.8-max），对一段含实体与关系的中文文本跑抽取 prompt（见 Step 3 的 prompt 格式），循环 3 次验证 JSON 输出稳定性并记录时延；用 WebFetch 取百炼官方文档的该模型单价与限流口径。结果写入 `docs/research/extraction-probe.md`，固定章节：模型名可用性、JSON 稳定性、单条时延、官方单价、实测与官方差异、由此确定的 `.env` 取值。若 qwen3.8-max 不可用（404/模型不存在），改用百炼在售等价档（如 qwen-max）并回填 `.env.example` 与 requirements-spec.md 第 4.4 节。
+写 `scripts/probe_extraction.py`：用 openai 兼容模式调用 `KB_EXTRACT_MODEL`（默认 qwen3.8-max）。两个探针：其一为实体抽取（见 Step 3 的抽取 prompt 格式，循环 3 次验证 JSON 稳定性并记录时延）；其二为**本体归纳**——对一段未建模领域的中文文本（如金融合规内容）跑归纳 prompt（见 Step 3 的归纳 prompt 格式），循环 3 次验证输出 schema 稳定性（classes 与 object_properties 的字段完整、local_name 为英文、domain/range 用中文标签）。用 WebFetch 取百炼官方文档的该模型单价与限流口径。结果写入 `docs/research/extraction-probe.md`（模型名可用性、两套 schema 稳定性、单条时延、官方单价、由此确定的 `.env` 取值）。若 qwen3.8-max 不可用，改用百炼在售等价档并回填 `.env.example` 与 requirements-spec.md 第 4.4 节。
 
 - [ ] **Step 2: 写失败测试 app/tests/test_extract.py**
 
@@ -5086,6 +5091,33 @@ def test_build_prompt_contains_signature_and_text():
     prompt = build_prompt(SIGNATURE, TEXT)
     assert "http://kb.local/o/t#Project" in prompt
     assert TEXT in prompt
+
+
+def test_parse_induction_keeps_valid_class():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"Product","label":"金融产品","definition":"面向投资者的理财产品","aliases":["产品"]}],"object_properties":[]}',
+        "本指引所称金融产品，包括理财产品等。",
+    )
+    assert parsed["classes"][0]["local_name"] == "Product"
+    assert parsed["discarded"] == 0
+
+
+def test_parse_induction_discards_invalid_local_name():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"金融产品","label":"金融产品","definition":"x"}],"object_properties":[]}',
+        "金融产品是本指引的监管对象。",
+    )
+    assert parsed["classes"] == []
+    assert parsed["discarded"] == 1
+
+
+def test_parse_induction_requires_label_and_definition():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"Product","label":"","definition":""}],"object_properties":[]}',
+        "金融产品。",
+    )
+    assert parsed["classes"] == []
+    assert parsed["discarded"] == 1
 ```
 
 - [ ] **Step 3: 写 app/kb/extract.py**
@@ -5198,6 +5230,130 @@ async def extract_chunk(settings: Settings, text: str, signature: dict) -> tuple
     return parsed, tokens
 
 
+INDUCTION_SYSTEM = (
+    "你是本体工程师。请阅读给定文本，归纳其中反复出现的领域概念与概念间的关系，"
+    "只输出一个 JSON 对象，格式为 "
+    '{"classes":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义","aliases":["别名"]}],'
+    '"object_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
+    '"domain":"域类中文标签","range":"值域类中文标签"}]}。'
+    "要求：local_name 为合法英文标识符；label 与 definition 必填；"
+    "domain 与 range 必须引用 classes 中给出的中文标签；"
+    '没有可归纳内容时输出 {"classes":[],"object_properties":[]}。'
+)
+
+
+def build_induction_prompt(text: str) -> str:
+    return (
+        "你是一名本体工程师。请阅读给定文本，归纳其中反复出现的领域概念与概念间的关系。\n\n"
+        "要求：\n"
+        "1. 只输出一个 JSON 对象，格式为 "
+        '{"classes":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义","aliases":["别名"]}],'
+        '"object_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
+        '"domain":"域类中文标签","range":"值域类中文标签"}]}；\n'
+        "2. local_name 必须是合法的英文标识符；\n"
+        "3. label 与 definition 必填，definition 用一句话概括该概念；\n"
+        "4. object_properties 的 domain 与 range 必须引用 classes 中的中文标签；\n"
+        "5. 只归纳文本中确实出现、且具有领域通用性的概念；\n"
+        '6. 没有可归纳内容时输出 {"classes":[],"object_properties":[]}。\n\n'
+        "文本：\n" + text
+    )
+
+
+LOCAL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def parse_induction(raw: str, text: str) -> dict:
+    data = json.loads(raw)
+    classes = []
+    object_properties = []
+    discarded = 0
+    for item in data.get("classes", []):
+        local_name = str(item.get("local_name", ""))
+        label = str(item.get("label", ""))
+        definition = str(item.get("definition", ""))
+        if LOCAL_NAME_RE.match(local_name) and label and label in text and definition:
+            classes.append(
+                {
+                    "local_name": local_name,
+                    "label": label,
+                    "definition": definition,
+                    "aliases": [str(a) for a in item.get("aliases", []) if str(a)],
+                }
+            )
+        else:
+            discarded += 1
+    labels = {c["label"] for c in classes}
+    for item in data.get("object_properties", []):
+        local_name = str(item.get("local_name", ""))
+        label = str(item.get("label", ""))
+        definition = str(item.get("definition", ""))
+        domain = str(item.get("domain", ""))
+        range_label = str(item.get("range", ""))
+        if (
+            LOCAL_NAME_RE.match(local_name)
+            and label
+            and definition
+            and domain in labels
+            and range_label in labels
+        ):
+            object_properties.append(
+                {
+                    "local_name": local_name,
+                    "label": label,
+                    "definition": definition,
+                    "domain": domain,
+                    "range": range_label,
+                }
+            )
+        else:
+            discarded += 1
+    return {"classes": classes, "object_properties": object_properties, "discarded": discarded}
+
+
+async def induct_chunk(settings: Settings, text: str) -> tuple[dict, int]:
+    client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=BASE_URL, timeout=60.0)
+    try:
+        resp = await client.chat.completions.create(
+            model=settings.kb_extract_model,
+            messages=[
+                {"role": "system", "content": "你只输出 JSON，不输出任何其他内容。"},
+                {"role": "user", "content": build_induction_prompt(text)},
+            ],
+            temperature=0,
+        )
+    except Exception as exc:
+        raise EmbedError(classify_error(exc), str(exc)) from exc
+    finally:
+        await client.close()
+    raw = resp.choices[0].message.content or ""
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match is None:
+        raise EmbedError(EmbedErrorCode.INPUT, "归纳响应不含 JSON")
+    try:
+        parsed = parse_induction(match.group(0), text)
+    except json.JSONDecodeError as exc:
+        raise EmbedError(EmbedErrorCode.INPUT, f"归纳响应 JSON 非法: {exc}") from exc
+    tokens = resp.usage.total_tokens if resp.usage else 0
+    return parsed, tokens
+
+
+async def induct_chunk_with_retry(
+    settings: Settings, text: str
+) -> tuple[dict, int, int]:
+    retries = 0
+    for delay in RETRY_DELAY_SECONDS + (None,):
+        try:
+            parsed, tokens = await induct_chunk(settings, text)
+            return parsed, tokens, retries
+        except EmbedError as exc:
+            retryable = exc.code in (EmbedErrorCode.RATE, EmbedErrorCode.UPSTREAM)
+            if not retryable or delay is None:
+                raise
+            retries += 1
+            await asyncio.sleep(delay)
+    raise EmbedError(EmbedErrorCode.UPSTREAM, "重试次数耗尽")
+
+
 async def extract_chunk_with_retry(
     settings: Settings, text: str, signature: dict
 ) -> tuple[dict, int, int]:
@@ -5298,9 +5454,84 @@ def _confirm_relation_proposal(driver, corpus_id: str, pid: str, payload: dict) 
         session.run("MATCH (p:PendingItem {pid: $pid}) SET p.status = 'confirmed'", pid=pid)
     return {"pid": pid, "action": "confirm", "status": "confirmed",
             "eid": from_eid, "anchor_count": count_entity_anchors(driver, from_eid)}
+
+
+def create_ontology_proposal(driver, corpus_id: str, element_kind: str, entry: dict,
+                             anchor: dict, prefix: str) -> str:
+    return create_pending(driver, corpus_id, "ontology_proposal", {
+        "element_kind": element_kind,
+        "local_name": entry["local_name"],
+        "label": entry["label"],
+        "definition": entry["definition"],
+        "aliases": entry.get("aliases", []),
+        "domain": entry.get("domain", ""),
+        "range": entry.get("range", ""),
+        "iri_preview": f"http://kb.local/o/{prefix}#{entry['local_name']}",
+        "anchor": anchor,
+    })
+
+
+def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) -> dict:
+    ontology = get_ontology(driver, corpus_id)
+    prefix = ontology["base_iri"].rstrip("#").rsplit("/", 1)[-1]
+    iri = payload.get("iri_preview") or f"http://kb.local/o/{prefix}#{payload['local_name']}"
+    existing_iris = {c["iri"] for c in ontology["classes"]} | {
+        p["iri"] for p in ontology["object_properties"]
+    }
+    if iri in existing_iris:
+        return {"pid": pid, "action": "confirm", "status": "open",
+                "eid": "", "anchor_count": 0, "error": "IRI_CONFLICT"}
+    if payload["element_kind"] == "class":
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "aliases": payload.get("aliases", []),
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_class(driver, corpus_id, entry)
+    else:
+        classes = ontology["classes"]
+        label_to_iri = {c.get("label_zh"): c["iri"] for c in classes if c.get("label_zh")}
+        domain_iri = label_to_iri.get(payload.get("domain", ""))
+        range_iri = label_to_iri.get(payload.get("range", ""))
+        if not domain_iri or not range_iri:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "DOMAIN_RANGE_UNRESOLVED"}
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "domain_iri": domain_iri,
+            "range_iri": range_iri,
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_obj_prop(driver, corpus_id, entry)
+    seq = new_ont_version(driver, corpus_id)
+    export_ttl(get_ontology(driver, corpus_id),
+               f"{get_settings().kb_ontology_export_dir}/{corpus_id}.ttl")
+    with driver.session() as session:
+        session.run("MATCH (p:PendingItem {pid: $pid}) SET p.status = 'confirmed'", pid=pid)
+    return {"pid": pid, "action": "confirm", "status": "confirmed",
+            "eid": iri, "anchor_count": 0, "ont_version": seq}
 ```
 
-- [ ] **Step 5: 写 run_extract 与 estimate_extract（app/kb/sync.py）**
+`resolve_pending` 的 confirm 分支在 relation_proposal 之后再增加：
+
+```python
+        if record["kind"] == "ontology_proposal":
+            return _confirm_ontology_proposal(driver, record["corpus_id"], pid, payload)
+```
+
+新增 import：`from kb.config import get_settings`、`from kb.neo4j_store import new_ont_version, write_ont_class, write_ont_obj_prop`、`from kb.ontology import export_ttl, validate_rl`。
+
+- [ ] **Step 5: 写 run_extract、estimate_extract 与 run_induct（app/kb/sync.py）**
 
 ```python
 from kb.extract import build_signature, extract_chunk_with_retry
@@ -5405,10 +5636,114 @@ async def estimate_extract(settings: Settings, corpus_id: str) -> dict:
         chunks = _collect_chunks(client, corpus_id, "all", None)
     finally:
         client.close()
-    return {"chunks": len(chunks)}
+    estimated_seconds = len(chunks) * 30 / max(1, settings.kb_extract_concurrency)
+    return {
+        "chunks": len(chunks),
+        "estimated_minutes": round(estimated_seconds / 60, 1),
+    }
+
+
+async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
+                     file_path: str | None = None, task_id: str | None = None) -> str:
+    task_id = task_id or uuid4().hex
+    driver = get_driver(settings)
+    client = qdrant_client(settings)
+    try:
+        init_schema(driver)
+        corpus = get_corpus(driver, corpus_id)
+        if corpus is None:
+            raise ValueError(f"corpus not found: {corpus_id}")
+        record_task(driver, task_id, corpus_id, "running", kind="induct")
+        ontology = get_ontology(driver, corpus_id)
+        prefix = corpus.get("ontology_prefix", corpus_id)
+        all_chunks = _collect_chunks(client, corpus_id, scope, file_path)
+        limit = max(1, settings.kb_induct_sample_limit)
+        if len(all_chunks) > limit:
+            step = len(all_chunks) / limit
+            chunks = [all_chunks[int(i * step)] for i in range(limit)]
+        else:
+            chunks = all_chunks
+
+        semaphore = asyncio.Semaphore(settings.kb_extract_concurrency)
+        calls_total = 0
+        tokens_total = 0
+        failed_total = 0
+        discarded_total = 0
+        created_total = 0
+
+        async def induct_one(chunk: dict) -> None:
+            nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            async with semaphore:
+                try:
+                    parsed, tokens, _ = await induct_chunk_with_retry(
+                        settings, chunk["text"]
+                    )
+                except EmbedError as exc:
+                    failed_total += 1
+                    create_pending(
+                        driver, corpus_id, "extract_failed",
+                        {"chunk_id": chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"]),
+                         "error_code": exc.code.value, "message": exc.message[:200]},
+                    )
+                else:
+                    calls_total += 1
+                    tokens_total += tokens
+                    discarded_total += parsed["discarded"]
+                    for entry in parsed["classes"]:
+                        create_ontology_proposal(driver, corpus_id, "class", entry,
+                                                 {"rel_path": chunk["asset_rel_path"],
+                                                  "seq": chunk["seq"],
+                                                  "sha256": chunk["chunk_sha256"]},
+                                                 prefix)
+                        created_total += 1
+                    for entry in parsed["object_properties"]:
+                        create_ontology_proposal(driver, corpus_id, "object_property", entry,
+                                                 {"rel_path": chunk["asset_rel_path"],
+                                                  "seq": chunk["seq"],
+                                                  "sha256": chunk["chunk_sha256"]},
+                                                 prefix)
+                        created_total += 1
+                update_task(
+                    driver, task_id,
+                    status="running",
+                    doc_total=len(chunks),
+                    proposals=created_total,
+                    extract_calls=calls_total,
+                    extract_tokens=tokens_total,
+                    extract_failed=failed_total,
+                    extract_discarded=discarded_total,
+                    extract_cost_estimate=round(
+                        tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+                    ),
+                )
+
+        await asyncio.gather(*(induct_one(chunk) for chunk in chunks))
+
+        update_task(
+            driver, task_id,
+            status="partial" if failed_total else "done",
+            doc_total=len(chunks),
+            proposals=created_total,
+            extract_calls=calls_total,
+            extract_tokens=tokens_total,
+            extract_failed=failed_total,
+            extract_discarded=discarded_total,
+            extract_cost_estimate=round(
+                tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+            ),
+            error_code="INDUCT_PARTIAL" if failed_total else "",
+            finished_at=time.time(),
+        )
+    except Exception:
+        update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
+        raise
+    finally:
+        driver.close()
+        client.close()
+    return task_id
 ```
 
-config.py 增加 `kb_extract_model: str = "qwen3.8-max"`、`kb_extract_price_per_1k_tokens: float = 0.0`、`kb_extract_concurrency: int = 2`；worker.py 增加：
+config.py 增加 `kb_extract_model: str = "qwen3.8-max"`、`kb_extract_price_per_1k_tokens: float = 0.0`、`kb_extract_concurrency: int = 2`、`kb_induct_sample_limit: int = 20`；worker.py 增加：
 
 ```python
 async def extract_job(ctx, corpus_id: str, scope: str = "all",
@@ -5416,9 +5751,16 @@ async def extract_job(ctx, corpus_id: str, scope: str = "all",
     return await sync_module.run_extract(
         get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
     )
+
+
+async def induct_job(ctx, corpus_id: str, scope: str = "all",
+                     file_path: str | None = None) -> str:
+    return await sync_module.run_induct(
+        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+    )
 ```
 
-`WorkerSettings.functions` 追加 `extract_job`；neo4j_store `record_task` 初始化字段追加 `extract_calls: 0, extract_tokens: 0, extract_failed: 0, extract_discarded: 0, extract_cost_estimate: 0.0`。`.env.example` 追加 `KB_EXTRACT_MODEL=qwen3.8-max`、`KB_EXTRACT_PRICE_PER_1K_TOKENS=`（实测回填）、`KB_EXTRACT_CONCURRENCY=2`。
+`WorkerSettings.functions` 追加 `extract_job`、`induct_job`；neo4j_store `record_task` 初始化字段追加 `extract_calls: 0, extract_tokens: 0, extract_failed: 0, extract_discarded: 0, extract_cost_estimate: 0.0`。`.env.example` 追加 `KB_EXTRACT_MODEL=qwen3.8-max`、`KB_EXTRACT_PRICE_PER_1K_TOKENS=`（实测回填）、`KB_EXTRACT_CONCURRENCY=2`、`KB_INDUCT_SAMPLE_LIMIT=20`。
 
 - [ ] **Step 6: 路由、统计与界面**
 
@@ -5437,9 +5779,30 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
                           driver=Depends(get_neo4j)):
     if get_corpus(driver, corpus_id) is None:
         raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    ontology = get_ontology(driver, corpus_id)
+    if not ontology["classes"] and not ontology["object_properties"]:
+        raise HTTPException(
+            400,
+            detail={"code": "EMPTY_ONTOLOGY",
+                    "message": "本体为空：请先在本体页创建至少一个类或对象属性，或先执行本体归纳"},
+        )
     trigger = body or ExtractTrigger()
     job = await request.app.state.arq.enqueue_job(
         "extract_job", corpus_id, trigger.scope, trigger.file_path
+    )
+    if job is None:
+        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+    return {"data": {"task_id": job.job_id}}
+
+
+@router.post("/{corpus_id}/induct")
+async def trigger_induct(corpus_id: str, request: Request, body: ExtractTrigger,
+                         driver=Depends(get_neo4j)):
+    if get_corpus(driver, corpus_id) is None:
+        raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    trigger = body or ExtractTrigger()
+    job = await request.app.state.arq.enqueue_job(
+        "induct_job", corpus_id, trigger.scope, trigger.file_path
     )
     if job is None:
         raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
@@ -5449,30 +5812,30 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
 stats.py 的查询追加 `sum(t.extract_calls) AS extract_calls, sum(t.extract_tokens) AS extract_tokens, sum(t.extract_failed) AS extract_failed, sum(t.extract_cost_estimate) AS extract_cost`。
 
 界面：
-- Ontology.vue 新增「LLM 抽取」卡片：范围单选（全部文档 / 指定文档+文档下拉取自 `/assets`）；「预估」按钮显示切片数；「执行抽取」二次确认后 POST `/extract` 并轮询任务；完成后提示并链接「待处理队列」。
-- Pending.vue：tab 增加 `relation_proposal`（展示 from/to/type_iri 与锚点，confirm/reject；confirm 返回 error 时提示原因）与 `extract_failed`（展示 chunk_id 与错误码，reject）。
+- Ontology.vue 的「LLM 辅助知识建模」卡片分两步：**第一步「本体归纳」**（范围单选 +「预估」（显示采样上限说明）+「归纳本体」→ POST `/induct` 并轮询任务，完成后提示到待处理队列确认本体）；**第二步「实体与关系抽取」**（范围单选 +「预估」（显示切片数与预计分钟数）+「执行抽取」→ POST `/extract` 并轮询任务）。本体为空时第二步显示警示（先归纳或手工建本体），接口侧以 400 EMPTY_ONTOLOGY 兜底。
+- Pending.vue：tab 增加 `ontology_proposal`（展示 element_kind、label、definition、iri_preview、domain/range，confirm/reject；confirm 返回 error 时提示原因）、`relation_proposal` 与 `extract_failed`。
 - Stats.vue：增加「抽取调用数」「抽取费用估算」两张卡片。
 
 - [ ] **Step 7: 测试**
 
-test_extract.py 见 Step 2（4 个单测）。test_proposals.py 增加集成测试 `test_relation_proposal_confirm_creates_entities_and_relation`（建类 Person/Project 与对象属性 belongsTo，create_relation_proposal 后 confirm，断言两端实体类为 domain/range、REL 关系存在、提案状态 confirmed）。test_sync.py 增加集成测试 `test_run_extract_creates_proposals_and_records`（monkeypatch `kb.sync.extract_chunk_with_retry` 返回固定 parsed，run_extract 后断言 pending 出现实体与关系提案、任务 extract_calls=1、extract_failed=0；再 monkeypatch 抛 EmbedError 断言 extract_failed 提案产生）。运行全量回归：旧 63 个测试保持通过 + 新增测试。
+test_extract.py 见 Step 2（4 个抽取单测 + 3 个归纳单测）。test_proposals.py 增加集成测试 `test_relation_proposal_confirm_creates_entities_and_relation` 与 `test_ontology_proposal_confirm_writes_ontology`（create_ontology_proposal 后 confirm 类，断言 OntClass 写入、TTL 物化、提案状态 confirmed；再 confirm 引用该类的对象属性，断言 domain/range 解析成功）。test_sync.py 增加集成测试 `test_run_extract_creates_proposals_and_records`、`test_run_extract_failure_goes_to_pending` 与 `test_run_induct_creates_ontology_proposals`（monkeypatch `kb.sync.induct_chunk_with_retry` 返回固定 parsed，run_induct 后断言 pending 出现 ontology_proposal、任务 kind=induct、extract_calls 符合采样上限）。运行全量回归：旧测试保持通过 + 新增测试。
 
 - [ ] **Step 8: 执行 V11 并记录**
 
-在 acceptance 语料中追加一篇 `note-v11.md`：包含别名未覆盖的实体表述（如「星河项目」，本体类「项目」别名仅有「项目组/验收项目组」）与关系句（「张三属于星河项目」，对应 belongsTo：Person→Project）。同步后经 API 对该文档触发 `POST /extract`（scope=file），Expected：任务 kind=extract、状态 done、`proposals>=2`；pending 出现实体提案（星河项目 → Project）与关系提案（张三 → 星河项目 → belongsTo）；confirm 后两端实体建立且 domain/range 校验通过，检索「星河项目」可命中该切片；记录 extract_calls、extract_tokens、extract_cost_estimate 与丢弃数。幻觉丢弃以 Step 2 单测为准。结果记入 `docs/acceptance/records.md` 的 V11 条目。
+两阶段验收（语料用未建模领域文本）：在 acceptance 语料中追加一篇 `note-v11.md`（金融领域表述，如「金融产品」「风险」「《指引》涉及金融产品风险」），先同步。**阶段一**：经 API 对该文档触发 `POST /induct`（scope=file），Expected：任务 kind=induct、状态 done、`proposals>=2`；pending 出现 kind=ontology_proposal 的类与对象属性候选（含 iri_preview）；confirm 后本体注册表新增该类与属性，TTL 导出含新要素。**阶段二**：`POST /extract`（scope=file），Expected：任务 kind=extract、done；pending 出现绑定到新确认类的实体提案与关系提案；confirm 后实体与关系建立、domain/range 校验通过，检索新实体表述可命中该切片。幻觉丢弃以 Step 2 单测为准。记录两次任务的调用数、令牌数与费用估算，写入 `docs/acceptance/records.md` 的 V11 条目。
 
 - [ ] **Step 9: 提交**
 
 ```bash
 git add scripts/probe_extraction.py docs/research/extraction-probe.md app/kb app/tests web .env.example docs/acceptance/records.md
-git commit -m "feat: add manual llm-assisted entity and relation extraction"
+git commit -m "feat: add manual two-stage llm knowledge modeling (induction and extraction)"
 ```
 
 ---
 
 ## 自审结论
 
-**规格覆盖**：FR-01 至 FR-14 与 NFR-01 至 NFR-12 全部有对应任务。映射关系为 FR-01 → Task 6、10；FR-02 → Task 4、5、8、10；FR-03 → Task 5、10、11；FR-04 → Task 9、10、11；FR-05 → Task 5、9、10；FR-06 → Task 6、10、11；FR-07 → Task 6、10；FR-08 → Task 7、10、11、15；FR-09 → Task 7、10、11；FR-10 → Task 10、11；FR-11 → Task 8、10、11、15；FR-12 → Task 12；FR-13 → Task 8、10、11、13；FR-14 → Task 15。NFR-01 至 NFR-05 → Task 3、5、8；NFR-06、NFR-07 → Task 1、2、11、12；NFR-08 → Task 1、13；NFR-09 → Task 8、10、11；NFR-10 → Task 14；NFR-11 → Task 1；NFR-12 → Task 15。验收判据 V1 至 V10 → Task 14，V11 → Task 15。
+**规格覆盖**：FR-01 至 FR-14 与 NFR-01 至 NFR-12 全部有对应任务。映射关系为 FR-01 → Task 6、10；FR-02 → Task 4、5、8、10；FR-03 → Task 5、10、11；FR-04 → Task 9、10、11；FR-05 → Task 5、9、10；FR-06 → Task 6、10、11、15；FR-07 → Task 6、10；FR-08 → Task 7、10、11、15；FR-09 → Task 7、10、11；FR-10 → Task 10、11；FR-11 → Task 8、10、11、15；FR-12 → Task 12；FR-13 → Task 8、10、11、13；FR-14 → Task 15。NFR-01 至 NFR-05 → Task 3、5、8；NFR-06、NFR-07 → Task 1、2、11、12；NFR-08 → Task 1、13；NFR-09 → Task 8、10、11；NFR-10 → Task 14；NFR-11 → Task 1；NFR-12 → Task 15。验收判据 V1 至 V10 → Task 14，V11 → Task 15。
 
 **执行顺序依赖**：Task 0 → 1 → 2 → 3、4、5 可并行 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15。其中 6 依赖 2，7 依赖 6，8 依赖 3、4、5、7，9 依赖 5、6，10 依赖 6 至 9，11 依赖 10，12 依赖 9、10，14 依赖全部，15 依赖 3、6、7、8、10、11。
 
