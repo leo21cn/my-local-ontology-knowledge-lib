@@ -227,6 +227,8 @@ def record_task(driver, task_id: str, corpus_id: str, status: str, kind: str = "
                                status: $status, started_at: $now,
                                doc_total: 0, doc_changed: 0, doc_removed: 0, chunks: 0,
                                tokens: 0, embed_retries: 0, cost_estimate: 0.0, proposals: 0,
+                               extract_calls: 0, extract_tokens: 0, extract_failed: 0,
+                               extract_discarded: 0, extract_cost_estimate: 0.0,
                                error_code: ''})
             """,
             task_id=task_id, corpus_id=corpus_id, kind=kind, status=status, now=time.time(),

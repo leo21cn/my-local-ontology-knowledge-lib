@@ -10,9 +10,11 @@ from qdrant_client.models import PointStruct
 from kb.chunker import chunk_markdown, chunk_sha256, extract_frontmatter
 from kb.config import Settings
 from kb.embed import EmbedError, embed_with_retry
+from kb.extract import build_signature, extract_chunk_with_retry
 from kb.neo4j_store import (
     get_corpus,
     get_driver,
+    get_ontology,
     init_schema,
     list_corpora,
     record_task,
@@ -22,6 +24,7 @@ from kb.proposals import (
     create_pending,
     find_entities_by_anchor_rel_path,
     generate_entity_proposals,
+    generate_llm_proposals,
 )
 from kb.qdrant_store import (
     build_payload,
@@ -317,3 +320,103 @@ async def estimate_rebuild(settings: Settings, corpus_id: str) -> dict:
         "embed_requests": (chunks_total + settings.kb_embed_batch - 1) // settings.kb_embed_batch,
         "cost_estimate": round(chars_total / 1000 * settings.kb_embed_price_per_1k_tokens, 6),
     }
+
+
+def _collect_chunks(client, corpus_id: str, scope: str, file_path: str | None) -> list[dict]:
+    offset = None
+    chunks = []
+    while True:
+        points, offset = client.scroll(
+            collection_name=collection_name(corpus_id), limit=1000, offset=offset,
+            with_payload=["asset_rel_path", "seq", "chunk_sha256", "text"], with_vectors=False,
+        )
+        for point in points:
+            payload = point.payload
+            if scope == "file" and file_path and payload["asset_rel_path"] != file_path:
+                continue
+            chunks.append(
+                {
+                    "asset_rel_path": payload["asset_rel_path"],
+                    "seq": payload["seq"],
+                    "chunk_sha256": payload["chunk_sha256"],
+                    "text": payload.get("text", ""),
+                }
+            )
+        if offset is None:
+            return chunks
+
+
+async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
+                      file_path: str | None = None, task_id: str | None = None) -> str:
+    task_id = task_id or uuid4().hex
+    driver = get_driver(settings)
+    client = qdrant_client(settings)
+    try:
+        init_schema(driver)
+        corpus = get_corpus(driver, corpus_id)
+        if corpus is None:
+            raise ValueError(f"corpus not found: {corpus_id}")
+        record_task(driver, task_id, corpus_id, "running", kind="extract")
+        signature = build_signature(get_ontology(driver, corpus_id))
+        chunks = _collect_chunks(client, corpus_id, scope, file_path)
+
+        semaphore = asyncio.Semaphore(settings.kb_extract_concurrency)
+        calls_total = 0
+        tokens_total = 0
+        failed_total = 0
+        discarded_total = 0
+        created_total = 0
+
+        async def extract_one(chunk: dict) -> None:
+            nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            async with semaphore:
+                try:
+                    parsed, tokens, _ = await extract_chunk_with_retry(
+                        settings, chunk["text"], signature
+                    )
+                except EmbedError as exc:
+                    failed_total += 1
+                    create_pending(
+                        driver, corpus_id, "extract_failed",
+                        {"chunk_id": chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"]),
+                         "error_code": exc.code.value, "message": exc.message[:200]},
+                    )
+                    return
+            calls_total += 1
+            tokens_total += tokens
+            discarded_total += parsed["discarded"]
+            created_total += generate_llm_proposals(driver, corpus_id, [chunk], [parsed])
+
+        await asyncio.gather(*(extract_one(chunk) for chunk in chunks))
+
+        update_task(
+            driver, task_id,
+            status="partial" if failed_total else "done",
+            doc_total=len(chunks),
+            proposals=created_total,
+            extract_calls=calls_total,
+            extract_tokens=tokens_total,
+            extract_failed=failed_total,
+            extract_discarded=discarded_total,
+            extract_cost_estimate=round(
+                tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+            ),
+            error_code="EXTRACT_PARTIAL" if failed_total else "",
+            finished_at=time.time(),
+        )
+    except Exception:
+        update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
+        raise
+    finally:
+        driver.close()
+        client.close()
+    return task_id
+
+
+async def estimate_extract(settings: Settings, corpus_id: str) -> dict:
+    client = qdrant_client(settings)
+    try:
+        chunks = _collect_chunks(client, corpus_id, "all", None)
+    finally:
+        client.close()
+    return {"chunks": len(chunks)}

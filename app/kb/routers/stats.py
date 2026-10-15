@@ -16,6 +16,10 @@ async def corpus_stats(corpus_id: str, driver=Depends(get_neo4j)):
                sum(t.tokens) AS tokens,
                sum(t.embed_retries) AS retries,
                sum(t.cost_estimate) AS cost,
+               sum(t.extract_calls) AS extract_calls,
+               sum(t.extract_tokens) AS extract_tokens,
+               sum(t.extract_failed) AS extract_failed,
+               sum(t.extract_cost_estimate) AS extract_cost,
                sum(CASE WHEN t.status = 'failed' THEN 1 ELSE 0 END) AS failed,
                count(DISTINCT p) AS pending
         """,

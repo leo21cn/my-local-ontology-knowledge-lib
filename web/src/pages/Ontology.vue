@@ -52,6 +52,41 @@
       </el-table>
     </el-card>
 
+    <el-card header="LLM 辅助抽取" style="margin-top: 12px">
+      <el-form inline>
+        <el-form-item label="范围">
+          <el-radio-group v-model="extractForm.scope">
+            <el-radio-button value="all">全部文档</el-radio-button>
+            <el-radio-button value="file">指定文档</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="extractForm.scope === 'file'" label="文档">
+          <el-select v-model="extractForm.file_path" filterable style="width: 300px" placeholder="选择文档">
+            <el-option v-for="a in assets" :key="a.rel_path" :label="a.rel_path" :value="a.rel_path" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="estimateExtract">预估</el-button>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="warning" :loading="extracting" @click="confirmExtract">执行抽取</el-button>
+        </el-form-item>
+        <el-form-item>
+          <el-button @click="$router.push('/pending')">前往待处理队列</el-button>
+        </el-form-item>
+      </el-form>
+      <div v-if="extractEstimate !== null" style="margin-top: 6px">
+        预估：切片 {{ extractEstimate.chunks }} 个（即抽取调用数上限）
+      </div>
+      <div v-if="extractTask" style="margin-top: 6px">
+        任务 {{ extractTask.task_id }}：状态 {{ extractTask.status }}，
+        调用 {{ extractTask.extract_calls }}，令牌 {{ extractTask.extract_tokens }}，
+        提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，
+        失败 {{ extractTask.extract_failed }}，
+        费用估算 {{ extractTask.extract_cost_estimate }}
+      </div>
+    </el-card>
+
     <el-dialog v-model="showClass" :title="classForm.iri && editing ? '修改类' : '新建类'" width="560px">
       <el-form :model="classForm" label-width="120px">
         <el-form-item label="IRI"><el-input v-model="classForm.iri" :disabled="editing" /></el-form-item>
@@ -100,7 +135,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
@@ -119,10 +154,65 @@ const classForm = reactive({ iri: '', prefix_local: '', label_zh: '', definition
 const objPropForm = reactive({ iri: '', prefix_local: '', label_zh: '', definition: '', domain_iri: '', range_iri: '' })
 const dataPropForm = reactive({ iri: '', prefix_local: '', label_zh: '', definition: '', domain_iri: '', xsd_range: 'http://www.w3.org/2001/XMLSchema#string' })
 
+const extractForm = reactive({ scope: 'all', file_path: '' })
+const assets = ref([])
+const extractEstimate = ref(null)
+const extractTask = ref(null)
+const extracting = ref(false)
+let extractTimer = null
+
 onMounted(load)
+onUnmounted(() => extractTimer && clearInterval(extractTimer))
 
 async function load() {
   ontology.value = await api.get(`/api/v1/ontology/${id}`)
+  assets.value = await api.get(`/api/v1/corpora/${id}/assets`)
+}
+
+async function estimateExtract() {
+  try {
+    extractEstimate.value = await api.get(`/api/v1/corpora/${id}/extract/estimate`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  }
+}
+
+async function pollExtract(taskId) {
+  extractTimer && clearInterval(extractTimer)
+  extractTimer = setInterval(async () => {
+    extractTask.value = await api.get(`/api/v1/tasks/${taskId}`)
+    if (['done', 'partial', 'failed'].includes(extractTask.value.status)) {
+      clearInterval(extractTimer)
+      extractTimer = null
+      ElMessage.success('抽取完成，请到待处理队列裁决提案')
+    }
+  }, 3000)
+}
+
+async function confirmExtract() {
+  try {
+    const payload = { scope: extractForm.scope }
+    if (extractForm.scope === 'file') {
+      if (!extractForm.file_path) {
+        ElMessage.error('请选择文档')
+        return
+      }
+      payload.file_path = extractForm.file_path
+    }
+    await ElMessageBox.confirm(
+      '抽取将逐切片调用 LLM 模型并按量计费，产出提案进入待处理队列，需人工确认后生效。确认执行？',
+      'LLM 抽取确认',
+      { type: 'warning' }
+    )
+    extracting.value = true
+    const resp = await api.post(`/api/v1/corpora/${id}/extract`, payload)
+    extractTask.value = null
+    await pollExtract(resp.task_id)
+  } catch (err) {
+    if (err !== 'cancel') ElMessage.error(err.message)
+  } finally {
+    extracting.value = false
+  }
 }
 
 function listText(value) {

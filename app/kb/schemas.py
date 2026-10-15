@@ -31,6 +31,11 @@ class RebuildTrigger(BaseModel):
     mode: str
 
 
+class ExtractTrigger(BaseModel):
+    scope: str = "all"
+    file_path: str | None = None
+
+
 class SearchFilters(BaseModel):
     tags: list[str] = Field(default_factory=list)
     time_from: float | None = None

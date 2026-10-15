@@ -2,8 +2,10 @@
   <div>
     <el-tabs v-model="kind">
       <el-tab-pane label="实体提案" name="proposal" />
+      <el-tab-pane label="关系提案" name="relation_proposal" />
       <el-tab-pane label="校验违规" name="violation" />
       <el-tab-pane label="嵌入失败" name="embed_failed" />
+      <el-tab-pane label="抽取失败" name="extract_failed" />
     </el-tabs>
 
     <el-table :data="grouped" border>
@@ -17,9 +19,9 @@
       <el-table-column prop="status" label="状态" width="90" />
       <el-table-column label="操作" width="260">
         <template #default="{ row }">
-          <el-button size="small" type="primary" @click="resolve(row, 'confirm')">确认</el-button>
+          <el-button v-if="['proposal', 'relation_proposal'].includes(row.kind)" size="small" type="primary" @click="resolve(row, 'confirm')">确认</el-button>
           <el-button size="small" type="danger" @click="resolve(row, 'reject')">拒绝</el-button>
-          <el-button size="small" @click="retypeFor = row; retypeDialog = true">改类型</el-button>
+          <el-button v-if="row.kind === 'proposal'" size="small" @click="retypeFor = row; retypeDialog = true">改类型</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -60,6 +62,8 @@ async function resolve(row, action) {
     const resp = await api.post(`/api/v1/pending/${row.pid}/resolve`, { action })
     if (resp.eid) {
       ElMessage.success(`已确认，实体 ${resp.eid} 锚点 ${resp.anchor_count} 个`)
+    } else if (resp.error) {
+      ElMessage.warning(`未能建立：${resp.error}`)
     } else {
       ElMessage.success(`已${action === 'reject' ? '拒绝' : '处理'}`)
     }

@@ -110,3 +110,36 @@ def test_split_entity_moves_anchor_subset(driver):
             """
         ).data()
     assert [row["n"] for row in rows] == [1, 1]
+
+
+@pytest.mark.integration
+def test_relation_proposal_confirm_creates_entities_and_relation(driver):
+    from kb.neo4j_store import write_ont_class, write_ont_obj_prop
+    from kb.proposals import create_relation_proposal
+
+    write_ont_class(driver, "c-prop", {
+        "iri": "http://kb.local/o/cprop#Person", "label_zh": "人员",
+        "definition": "个体", "parent_iris": [], "disjoint_with": [],
+    })
+    write_ont_obj_prop(driver, "c-prop", {
+        "iri": "http://kb.local/o/cprop#belongsTo", "label_zh": "属于",
+        "definition": "人员属于项目",
+        "domain_iri": "http://kb.local/o/cprop#Person",
+        "range_iri": CLASS["iri"],
+    })
+    anchor = {"rel_path": "g.md", "seq": 0, "sha256": "s-g"}
+    pid = create_relation_proposal(
+        driver, "c-prop", "人员甲", "项目乙", "http://kb.local/o/cprop#belongsTo", anchor
+    )
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "confirmed"
+    assert result["eid"] == entity_id("http://kb.local/o/cprop#Person", "人员甲")
+    with driver.session() as session:
+        rels = session.run(
+            "MATCH (a:Entity {eid: $a})-[r:REL]->(b:Entity) RETURN r.type_iri AS t, b.label AS bl",
+            a=result["eid"],
+        ).data()
+    assert len(rels) == 1
+    assert rels[0]["t"] == "http://kb.local/o/cprop#belongsTo"
+    items = list_pending(driver, "c-prop")
+    assert all(i["pid"] != pid for i in items)

@@ -4,10 +4,12 @@ import json
 from kb.neo4j_store import (
     count_entity_anchors,
     ensure_anchor_link,
+    get_ontology,
     list_entity_anchors,
     new_pending_id,
     remove_anchor_links,
 )
+from kb.ontology import check_relation_valid
 
 
 def get_classes_with_aliases(driver, corpus_id: str) -> list[dict]:
@@ -109,6 +111,8 @@ def resolve_pending(driver, pid: str, action: str, new_class_iri: str | None = N
         status = "open"
         eid = ""
     else:
+        if record["kind"] == "relation_proposal":
+            return _confirm_relation_proposal(driver, record["corpus_id"], pid, payload)
         status = "confirmed"
         eid = ensure_entity(
             driver,
@@ -154,6 +158,76 @@ def generate_entity_proposals(driver, corpus_id: str, chunks: list[dict]) -> int
             )
             created += 1
     return created
+
+
+def create_relation_proposal(driver, corpus_id: str, from_term: str, to_term: str,
+                             type_iri: str, anchor: dict) -> str:
+    return create_pending(
+        driver,
+        corpus_id,
+        "relation_proposal",
+        {"from": from_term, "to": to_term, "type_iri": type_iri, "anchor": anchor},
+    )
+
+
+def generate_llm_proposals(driver, corpus_id: str, chunks: list[dict],
+                           extracted: list[dict]) -> int:
+    created = 0
+    for chunk, result in zip(chunks, extracted):
+        for entity in result["entities"]:
+            create_pending(driver, corpus_id, "proposal", {
+                "class_iri": entity["class_iri"],
+                "term": entity["term"],
+                "label": entity["term"],
+                "anchor": {
+                    "rel_path": chunk["asset_rel_path"],
+                    "seq": chunk["seq"],
+                    "sha256": chunk["chunk_sha256"],
+                },
+            })
+            created += 1
+        for relation in result["relations"]:
+            create_relation_proposal(
+                driver, corpus_id, relation["from"], relation["to"], relation["type_iri"],
+                {"rel_path": chunk["asset_rel_path"], "seq": chunk["seq"],
+                 "sha256": chunk["chunk_sha256"]},
+            )
+            created += 1
+    return created
+
+
+def _confirm_relation_proposal(driver, corpus_id: str, pid: str, payload: dict) -> dict:
+    ontology = get_ontology(driver, corpus_id)
+    obj_prop = next(
+        (p for p in ontology["object_properties"] if p["iri"] == payload.get("type_iri")), None
+    )
+    if obj_prop is None or not obj_prop.get("domain_iri") or not obj_prop.get("range_iri"):
+        return {"pid": pid, "action": "confirm", "status": "open",
+                "eid": "", "anchor_count": 0, "error": "PROPERTY_DOMAIN_RANGE_MISSING"}
+    anchor = payload.get("anchor", {})
+    from_eid = ensure_entity(driver, corpus_id, payload["from"], obj_prop["domain_iri"],
+                             anchor, ont_version=0)
+    to_eid = ensure_entity(driver, corpus_id, payload["to"], obj_prop["range_iri"],
+                           anchor, ont_version=0)
+    reasons = check_relation_valid(
+        ontology["classes"], obj_prop, obj_prop["domain_iri"], obj_prop["range_iri"]
+    )
+    if reasons:
+        return {"pid": pid, "action": "confirm", "status": "open",
+                "eid": from_eid, "anchor_count": 0, "error": ",".join(reasons)}
+    with driver.session() as session:
+        session.run(
+            """
+            MATCH (a:Entity {eid: $from_eid}), (b:Entity {eid: $to_eid})
+            CREATE (a)-[r:REL {type_iri: $type_iri, evidence_anchors: $anchors,
+                               state: 'confirmed'}]->(b)
+            """,
+            from_eid=from_eid, to_eid=to_eid, type_iri=obj_prop["iri"],
+            anchors=json.dumps(anchor),
+        )
+        session.run("MATCH (p:PendingItem {pid: $pid}) SET p.status = 'confirmed'", pid=pid)
+    return {"pid": pid, "action": "confirm", "status": "confirmed",
+            "eid": from_eid, "anchor_count": count_entity_anchors(driver, from_eid)}
 
 
 def find_entities_by_anchor_rel_path(driver, corpus_id: str, rel_path: str) -> list[dict]:

@@ -19,8 +19,8 @@ from kb.neo4j_store import (
 )
 from kb.ontology import export_ttl
 from kb.qdrant_store import collection_name, ensure_collection
-from kb.schemas import CorpusCreate, CorpusUpdate, RebuildTrigger, SyncTrigger
-from kb.sync import estimate_rebuild
+from kb.schemas import CorpusCreate, CorpusUpdate, ExtractTrigger, RebuildTrigger, SyncTrigger
+from kb.sync import estimate_extract, estimate_rebuild
 
 router = APIRouter(prefix="/api/v1/corpora", dependencies=[Depends(require_token)])
 
@@ -106,6 +106,27 @@ async def trigger_rebuild(corpus_id: str, request: Request, body: RebuildTrigger
     if body.mode not in ("structure", "reembed"):
         raise HTTPException(400, detail={"code": "BAD_REBUILD_MODE", "message": body.mode})
     job = await request.app.state.arq.enqueue_job("rebuild_job", corpus_id, body.mode)
+    if job is None:
+        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+    return {"data": {"task_id": job.job_id}}
+
+
+@router.get("/{corpus_id}/extract/estimate")
+async def extract_estimate(corpus_id: str, driver=Depends(get_neo4j)):
+    if get_corpus(driver, corpus_id) is None:
+        raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    return {"data": await estimate_extract(get_settings(), corpus_id)}
+
+
+@router.post("/{corpus_id}/extract")
+async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger,
+                          driver=Depends(get_neo4j)):
+    if get_corpus(driver, corpus_id) is None:
+        raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    trigger = body or ExtractTrigger()
+    job = await request.app.state.arq.enqueue_job(
+        "extract_job", corpus_id, trigger.scope, trigger.file_path
+    )
     if job is None:
         raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
     return {"data": {"task_id": job.job_id}}

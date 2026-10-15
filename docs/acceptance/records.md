@@ -67,6 +67,15 @@
 - 三者返回一致：首条 note-042.md、anchor sha 6096b4dd…、score 0.016393。
 - `grep run_search app/kb`：实现仅一处（kb/search.py）。
 
+## V11 LLM 抽取闭环 — 通过
+
+- 语料：`note-v11.md` 含别名未覆盖表述「星河交付」（本体类「项目」别名仅有「项目组/验收项目组」，别名匹配对「星河交付」产不出提案，实测同步 proposals=0）与关系句「张三属于星河交付」。
+- 手动触发：`POST /corpora/364db128e988/extract`（scope=file, file_path=note-v11.md），任务 kind=extract、status=done，extract_calls=2、extract_tokens=1644、proposals=7、extract_discarded=0、extract_failed=0、extract_cost_estimate=0.002713 元。
+- 提案：pending 出现实体提案（星河交付→Project、张三/李四→Person）与关系提案（张三 belongsTo 星河交付），锚点均指向 note-v11 切片。
+- 确认：confirm 关系提案后两端实体自动建立（Person 张三、Project 星河交付，各 1 锚点），关系建立（图谱 2 节点 1 边），domain/range 校验通过；检索「星河交付」首条命中 note-v11.md#1。
+- 幻觉校验：本次模型无幻觉输出（discarded=0）；幻觉丢弃逻辑由单测 `test_parse_extraction_discards_hallucinated_term` 与 `test_parse_extraction_discards_unknown_iri` 覆盖。
+- 成本：单切片调用约 800 tokens ≈ 0.0013 元（单价 qwen3.8-max 输入 0.00165 元/千 tokens，见 [docs/research/extraction-probe.md](research/extraction-probe.md)）。
+
 ## 待人工闭环
 
 1. V5：用户以 Protégé 打开 `ontology/<corpus_id>.ttl` 确认无解析错误。
