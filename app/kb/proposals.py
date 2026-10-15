@@ -11,6 +11,7 @@ from kb.neo4j_store import (
     new_pending_id,
     remove_anchor_links,
     write_ont_class,
+    write_ont_data_prop,
     write_ont_obj_prop,
 )
 from kb.ontology import check_relation_valid, export_ttl, validate_rl
@@ -132,7 +133,7 @@ def edit_ontology_proposal(driver, pid: str, fields: dict) -> dict:
         payload["definition"] = fields["definition"]
     if fields.get("aliases") is not None:
         payload["aliases"] = fields["aliases"]
-    if payload.get("element_kind") == "object_property":
+    if payload.get("element_kind") in ("object_property", "datatype_property"):
         if fields.get("domain") is not None:
             payload["domain"] = fields["domain"]
         if fields.get("range") is not None:
@@ -304,9 +305,13 @@ def create_ontology_proposal(driver, corpus_id: str, element_kind: str, entry: d
             existing = session.run(
                 "MATCH (c:OntClass {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri
             ).single()
-        else:
+        elif element_kind == "object_property":
             existing = session.run(
                 "MATCH (c:OntObjProp {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri
+            ).single()
+        else:
+            existing = session.run(
+                "MATCH (c:OntDataProp {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri
             ).single()
         if existing and existing["l"] == label:
             return ""
@@ -329,11 +334,12 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
     iri = payload.get("iri_preview") or f"http://kb.local/o/{prefix}#{payload['local_name']}"
     existing_iris = {c["iri"] for c in ontology["classes"]} | {
         p["iri"] for p in ontology["object_properties"]
-    }
+    } | {p["iri"] for p in ontology["datatype_properties"]}
     if iri in existing_iris:
         same_kind = (
             (payload["element_kind"] == "class" and any(c["iri"] == iri for c in ontology["classes"]))
             or (payload["element_kind"] == "object_property" and any(p["iri"] == iri for p in ontology["object_properties"]))
+            or (payload["element_kind"] == "datatype_property" and any(p["iri"] == iri for p in ontology["datatype_properties"]))
         )
         existing_label = ""
         existing_kind = "类"
@@ -341,9 +347,14 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
             match = [c for c in ontology["classes"] if c["iri"] == iri]
             if match:
                 existing_label = match[0].get("label_zh", "")
-        else:
+        elif payload["element_kind"] == "object_property":
             existing_kind = "对象属性"
             match = [p for p in ontology["object_properties"] if p["iri"] == iri]
+            if match:
+                existing_label = match[0].get("label_zh", "")
+        else:
+            existing_kind = "数据属性"
+            match = [p for p in ontology["datatype_properties"] if p["iri"] == iri]
             if match:
                 existing_label = match[0].get("label_zh", "")
         is_duplicate = same_kind and (
@@ -373,6 +384,31 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
             return {"pid": pid, "action": "confirm", "status": "open",
                     "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
         write_ont_class(driver, corpus_id, entry)
+    elif payload["element_kind"] == "datatype_property":
+        classes = ontology["classes"]
+        label_to_iri = {}
+        for c in classes:
+            if c.get("label_zh"):
+                label_to_iri[c["label_zh"]] = c["iri"]
+            for alias in c.get("aliases", []):
+                label_to_iri.setdefault(alias, c["iri"])
+        domain_iri = label_to_iri.get(payload.get("domain", ""), "")
+        if not domain_iri:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0,
+                    "error": f"DOMAIN_UNRESOLVED: 类标签未找到「{payload.get('domain', '')}」，请编辑提案修正 domain 后重试"}
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "domain_iri": domain_iri,
+            "xsd_range": payload.get("range", "http://www.w3.org/2001/XMLSchema#string"),
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_data_prop(driver, corpus_id, entry)
     else:
         classes = ontology["classes"]
         label_to_iri = {}

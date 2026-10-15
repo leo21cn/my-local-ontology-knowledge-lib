@@ -192,6 +192,7 @@ async def test_run_induct_creates_ontology_proposals(tmp_path, monkeypatch):
     parsed = {
         "classes": [{"local_name": "Client", "label": "客户", "definition": "个体", "aliases": []}],
         "object_properties": [],
+        "datatype_properties": [],
         "discarded": 0,
     }
 

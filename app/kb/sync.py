@@ -502,6 +502,10 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
                         create_ontology_proposal(driver, corpus_id, "object_property", entry,
                                                  anchor, prefix)
                         created_total += 1
+                    for entry in parsed["datatype_properties"]:
+                        create_ontology_proposal(driver, corpus_id, "datatype_property", entry,
+                                                 anchor, prefix)
+                        created_total += 1
                 update_task(
                     driver, task_id,
                     status="running",

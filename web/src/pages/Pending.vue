@@ -72,6 +72,18 @@
             </el-select>
           </el-form-item>
         </template>
+        <template v-if="editForm.element_kind === 'datatype_property'">
+          <el-form-item label="domain 类标签">
+            <el-select v-model="editForm.domain" filterable allow-create placeholder="选择或输入已确认类的标签">
+              <el-option v-for="c in classLabels" :key="c" :label="c" :value="c" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="range xsd 类型">
+            <el-select v-model="editForm.range" placeholder="选择 xsd 类型">
+              <el-option v-for="x in XSD_OPTIONS" :key="x.value" :label="x.label" :value="x.value" />
+            </el-select>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="editDialog = false">取消</el-button>
@@ -95,6 +107,14 @@ const editDialog = ref(false)
 const editFor = ref(null)
 const editForm = ref({})
 const classLabels = ref([])
+const XSD_OPTIONS = [
+  { label: 'string（字符串/文本）', value: 'http://www.w3.org/2001/XMLSchema#string' },
+  { label: 'integer（整数）', value: 'http://www.w3.org/2001/XMLSchema#integer' },
+  { label: 'date（日期）', value: 'http://www.w3.org/2001/XMLSchema#date' },
+  { label: 'dateTime（日期时间）', value: 'http://www.w3.org/2001/XMLSchema#dateTime' },
+  { label: 'boolean（布尔）', value: 'http://www.w3.org/2001/XMLSchema#boolean' },
+  { label: 'decimal（小数/数值）', value: 'http://www.w3.org/2001/XMLSchema#decimal' }
+]
 
 const grouped = computed(() => {
   const list = items.value.filter((i) => i.kind === kind.value)
@@ -174,6 +194,10 @@ async function saveEdit() {
         : [],
     }
     if (editForm.value.element_kind === 'object_property') {
+      body.domain = editForm.value.domain
+      body.range = editForm.value.range
+    }
+    if (editForm.value.element_kind === 'datatype_property') {
       body.domain = editForm.value.domain
       body.range = editForm.value.range
     }

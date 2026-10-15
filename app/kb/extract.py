@@ -129,15 +129,46 @@ def build_induction_prompt(text: str) -> str:
         "1. 只输出一个 JSON 对象，格式为 "
         '{"classes":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义","aliases":["别名"]}],'
         '"object_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
-        '"domain":"域类中文标签","range":"值域类中文标签"}]}；\n'
+        '"domain":"域类中文标签","range":"值域类中文标签"}],'
+        '"datatype_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
+        '"domain":"所属类中文标签","range":"xsd类型"}]}；\n'
         "2. local_name 必须是合法的英文标识符；\n"
         "3. label 与 definition 必填，definition 用一句话概括该概念；\n"
         "4. object_properties 的 domain 与 range 必须引用 classes 中的中文标签；\n"
-        "5. 只归纳文本中确实出现、且具有领域通用性的概念；\n"
-        "6. 最多输出 6 个类与 4 个对象属性，只保留最核心、出现频率最高的概念；\n"
-        '7. 没有可归纳内容时输出 {"classes":[],"object_properties":[]}。\n\n'
+        "5. datatype_properties 的 domain 必须引用 classes 中的中文标签，range 只能取："
+        "string（字符串/文本）、integer（整数）、date（日期）、dateTime（日期时间）、boolean（布尔）、decimal（小数/数值）；\n"
+        "6. 只归纳文本中确实出现、且具有领域通用性的概念；\n"
+        "7. 最多输出 6 个类、4 个对象属性与 4 个数据属性，只保留最核心、出现频率最高的概念；\n"
+        '8. 没有可归纳内容时输出 {"classes":[],"object_properties":[],"datatype_properties":[]}。\n\n'
         "文本：\n" + text
     )
+
+
+XSD_ALIASES = {
+    "string": "http://www.w3.org/2001/XMLSchema#string",
+    "字符串": "http://www.w3.org/2001/XMLSchema#string",
+    "文本": "http://www.w3.org/2001/XMLSchema#string",
+    "integer": "http://www.w3.org/2001/XMLSchema#integer",
+    "整数": "http://www.w3.org/2001/XMLSchema#integer",
+    "date": "http://www.w3.org/2001/XMLSchema#date",
+    "日期": "http://www.w3.org/2001/XMLSchema#date",
+    "dateTime": "http://www.w3.org/2001/XMLSchema#dateTime",
+    "日期时间": "http://www.w3.org/2001/XMLSchema#dateTime",
+    "boolean": "http://www.w3.org/2001/XMLSchema#boolean",
+    "布尔": "http://www.w3.org/2001/XMLSchema#boolean",
+    "decimal": "http://www.w3.org/2001/XMLSchema#decimal",
+    "小数": "http://www.w3.org/2001/XMLSchema#decimal",
+    "数值": "http://www.w3.org/2001/XMLSchema#decimal",
+}
+
+
+def _resolve_xsd(raw: str) -> str:
+    value = str(raw).strip()
+    if value.startswith("xsd:") and value.split(":", 1)[1] in {
+        "string", "integer", "date", "dateTime", "boolean", "decimal",
+    }:
+        return f"http://www.w3.org/2001/XMLSchema#{value.split(':', 1)[1]}"
+    return XSD_ALIASES.get(value, "")
 
 
 LOCAL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -147,6 +178,7 @@ def parse_induction(raw: str, text: str) -> dict:
     data = json.loads(raw)
     classes = []
     object_properties = []
+    datatype_properties = []
     discarded = 0
     for item in data.get("classes", []):
         local_name = str(item.get("local_name", ""))
@@ -188,7 +220,36 @@ def parse_induction(raw: str, text: str) -> dict:
             )
         else:
             discarded += 1
-    return {"classes": classes, "object_properties": object_properties, "discarded": discarded}
+    for item in data.get("datatype_properties", []):
+        local_name = str(item.get("local_name", ""))
+        label = str(item.get("label", ""))
+        definition = str(item.get("definition", ""))
+        domain = str(item.get("domain", ""))
+        xsd_iri = _resolve_xsd(item.get("range", ""))
+        if (
+            LOCAL_NAME_RE.match(local_name)
+            and label
+            and definition
+            and domain in labels
+            and xsd_iri
+        ):
+            datatype_properties.append(
+                {
+                    "local_name": local_name,
+                    "label": label,
+                    "definition": definition,
+                    "domain": domain,
+                    "range": xsd_iri,
+                }
+            )
+        else:
+            discarded += 1
+    return {
+        "classes": classes,
+        "object_properties": object_properties,
+        "datatype_properties": datatype_properties,
+        "discarded": discarded,
+    }
 
 
 async def induct_chunk(settings: Settings, text: str) -> tuple[dict, int]:

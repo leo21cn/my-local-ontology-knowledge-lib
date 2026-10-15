@@ -81,3 +81,25 @@ def test_parse_induction_property_domain_range_must_reference_classes():
     )
     assert parsed["object_properties"] == []
     assert parsed["discarded"] == 1
+
+
+def test_parse_induction_datatype_property_with_chinese_range():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"Product","label":"金融产品","definition":"理财产品"}],'
+        '"object_properties":[],'
+        '"datatype_properties":[{"local_name":"publishDate","label":"发布日期","definition":"产品发布日","domain":"金融产品","range":"日期"}]}',
+        INDUCTION_TEXT,
+    )
+    assert len(parsed["datatype_properties"]) == 1
+    assert parsed["datatype_properties"][0]["range"] == "http://www.w3.org/2001/XMLSchema#date"
+
+
+def test_parse_induction_datatype_property_rejects_unknown_xsd():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"Product","label":"金融产品","definition":"理财产品"}],'
+        '"object_properties":[],'
+        '"datatype_properties":[{"local_name":"publishDate","label":"发布日期","definition":"产品发布日","domain":"金融产品","range":"时间戳"}]}',
+        INDUCTION_TEXT,
+    )
+    assert parsed["datatype_properties"] == []
+    assert parsed["discarded"] == 1

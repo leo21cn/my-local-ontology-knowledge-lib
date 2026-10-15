@@ -208,6 +208,47 @@ def test_ontology_proposal_edit_then_confirm(driver):
 
 
 @pytest.mark.integration
+def test_datatype_proposal_confirm_writes_ontology(driver):
+    from kb.neo4j_store import get_ontology as neo4j_get_ontology
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "l.md", "seq": 0, "sha256": "s-l"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "datatype_property",
+        {"local_name": "dueDate", "label": "截止日期", "definition": "项目的截止日期",
+         "domain": "项目", "range": "http://www.w3.org/2001/XMLSchema#date"},
+        anchor, "cprop",
+    )
+    assert pid
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "confirmed"
+    assert result["eid"] == "http://kb.local/o/cprop#dueDate"
+    ontology = neo4j_get_ontology(driver, "c-prop")
+    assert any(
+        p["iri"] == "http://kb.local/o/cprop#dueDate"
+        and p["xsd_range"] == "http://www.w3.org/2001/XMLSchema#date"
+        for p in ontology["datatype_properties"]
+    )
+
+
+@pytest.mark.integration
+def test_datatype_proposal_unresolved_domain_keeps_open(driver):
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "m.md", "seq": 0, "sha256": "s-m"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "datatype_property",
+        {"local_name": "dueDate", "label": "截止日期", "definition": "项目的截止日期",
+         "domain": "不存在的类", "range": "http://www.w3.org/2001/XMLSchema#date"},
+        anchor, "cprop",
+    )
+    assert pid
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "open"
+    assert result["error"].startswith("DOMAIN_UNRESOLVED")
+
+
+@pytest.mark.integration
 def test_ontology_proposal_generation_skips_confirmed_duplicate(driver):
     from kb.proposals import create_ontology_proposal
 
