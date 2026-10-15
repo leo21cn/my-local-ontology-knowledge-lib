@@ -38,15 +38,26 @@ def entity_id(class_iri: str, label: str) -> str:
 
 
 def create_pending(driver, corpus_id: str, kind: str, payload: dict) -> str:
-    pid = new_pending_id()
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     with driver.session() as session:
+        duplicate = session.run(
+            """
+            MATCH (p:PendingItem {corpus_id: $corpus_id, kind: $kind, status: 'open'})
+            RETURN p.pid AS pid, p.payload AS payload
+            """,
+            corpus_id=corpus_id, kind=kind,
+        )
+        for row in duplicate:
+            if json.dumps(json.loads(row["payload"]) if row["payload"] else {}, ensure_ascii=False, sort_keys=True) == serialized:
+                return row["pid"]
+        pid = new_pending_id()
         session.run(
             """
             CREATE (p:PendingItem {pid: $pid, corpus_id: $corpus_id, kind: $kind,
                                    payload: $payload, attempts: 0,
                                    last_error_code: '', status: 'open', created_at: timestamp()})
             """,
-            pid=pid, corpus_id=corpus_id, kind=kind, payload=json.dumps(payload, ensure_ascii=False),
+            pid=pid, corpus_id=corpus_id, kind=kind, payload=serialized,
         )
     return pid
 

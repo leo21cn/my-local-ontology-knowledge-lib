@@ -49,6 +49,21 @@ def test_corpus_roundtrip(driver):
 
 
 @pytest.mark.integration
+def test_record_task_is_idempotent(driver):
+    from kb.neo4j_store import get_task
+
+    record_task(driver, "task-dup-1", "c-test", "running", kind="extract")
+    update_task(driver, "task-dup-1", extract_calls=5, proposals=3, status="done")
+    record_task(driver, "task-dup-1", "c-test", "running", kind="extract")
+    record = get_task(driver, "task-dup-1")
+    assert record is not None
+    assert record["status"] == "running"
+    assert record["extract_calls"] == 0
+    assert record["proposals"] == 0
+    assert record["error_code"] == ""
+
+
+@pytest.mark.integration
 def test_ontology_write_and_read_back(driver):
     upsert_corpus(driver, CORPUS)
     write_ont_class(

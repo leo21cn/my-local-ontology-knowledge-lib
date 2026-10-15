@@ -51,6 +51,20 @@ def test_entity_id_is_deterministic():
 
 
 @pytest.mark.integration
+def test_create_pending_dedupes_identical_payload(driver):
+    payload = {"class_iri": CLASS["iri"], "term": "项目组", "label": "项目组",
+               "anchor": {"rel_path": "x.md", "seq": 0, "sha256": "s-x"}}
+    pid1 = create_pending(driver, "c-prop", "proposal", payload)
+    pid2 = create_pending(driver, "c-prop", "proposal", payload)
+    assert pid1 == pid2
+    items = [i for i in list_pending(driver, "c-prop") if i["pid"] == pid1]
+    assert len(items) == 1
+    different = dict(payload, term="项目组乙", label="项目组乙")
+    pid3 = create_pending(driver, "c-prop", "proposal", different)
+    assert pid3 != pid1
+
+
+@pytest.mark.integration
 def test_alias_match_creates_two_proposals(driver):
     assert generate_entity_proposals(driver, "c-prop", CHUNKS) == 2
     assert len(list_pending(driver, "c-prop")) == 2

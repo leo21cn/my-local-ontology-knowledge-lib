@@ -223,13 +223,14 @@ def record_task(driver, task_id: str, corpus_id: str, status: str, kind: str = "
     with driver.session() as session:
         session.run(
             """
-            CREATE (t:OpsTask {task_id: $task_id, corpus_id: $corpus_id, kind: $kind,
-                               status: $status, started_at: $now,
-                               doc_total: 0, doc_changed: 0, doc_removed: 0, chunks: 0,
-                               tokens: 0, embed_retries: 0, cost_estimate: 0.0, proposals: 0,
-                               extract_calls: 0, extract_tokens: 0, extract_failed: 0,
-                               extract_discarded: 0, extract_cost_estimate: 0.0,
-                               error_code: ''})
+            MERGE (t:OpsTask {task_id: $task_id})
+            ON CREATE SET t.corpus_id = $corpus_id, t.kind = $kind
+            SET t.status = $status, t.started_at = $now,
+                t.doc_total = 0, t.doc_changed = 0, t.doc_removed = 0, t.chunks = 0,
+                t.tokens = 0, t.embed_retries = 0, t.cost_estimate = 0.0, t.proposals = 0,
+                t.extract_calls = 0, t.extract_tokens = 0, t.extract_failed = 0,
+                t.extract_discarded = 0, t.extract_cost_estimate = 0.0,
+                t.error_code = ''
             """,
             task_id=task_id, corpus_id=corpus_id, kind=kind, status=status, now=time.time(),
         )
