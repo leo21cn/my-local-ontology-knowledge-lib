@@ -130,7 +130,7 @@
 - 前置条件：库存在；阶段一要求存在已同步切片，阶段二要求本库已有已确认本体要素（无则拒绝并提示先归纳或手工建本体）；`KB_EXTRACT_MODEL` 已配置。
 - 输入：库标识、范围、目标模型参数（见 4.4 节环境变量）。
 - 处理规则：
-  - 阶段一本体归纳：从选定范围**采样最多 `KB_INDUCT_SAMPLE_LIMIT`（默认 20）个切片**（全库时均匀采样，单文档时取该文档前 N 片），逐切片调用文本模型归纳候选本体要素：类（local_name、中文标签、定义、别名）与对象属性（local_name、中文标签、定义、domain/range 以中文标签引用类）。输出经校验后以 kind=ontology_proposal 落待处理队列，payload 携带系统生成的完整 IRI 预览与证据锚点；校验不通过（local_name 格式非法、标签/定义缺失、正文无支撑）的条目丢弃并计数。本体提案支持**编辑后确认**（`PATCH /pending/{pid}`，可改 local_name、标签、定义、别名、domain/range，保存后仍可确认）。确认时写入本体注册表（复用 OWL 2 RL 校验与 TTL 物化路径）：类直接入册；对象属性的 domain/range 标签解析为本库已确认类（标签或别名匹配，含同批先确认的类），解析不到则该提案保持待处理并在返回中列出缺失标签与已确认类标签清单，供人工编辑修正；IRI 与现有要素冲突时确认失败并保持待处理。
+  - 阶段一本体归纳：从选定范围**采样最多 `KB_INDUCT_SAMPLE_LIMIT`（默认 20）个切片**（全库时均匀采样，单文档时取该文档前 N 片），逐切片调用文本模型归纳候选本体要素：类（local_name、中文标签、定义、别名）、对象属性（local_name、中文标签、定义、domain/range 以中文标签引用类）与数据属性（local_name、中文标签、定义、domain 以中文标签引用类、range 为 xsd 类型）。输出经校验后以 kind=ontology_proposal 落待处理队列，payload 携带系统生成的完整 IRI 预览与证据锚点；校验不通过（local_name 格式非法、标签/定义缺失、正文无支撑、xsd 类型不在白名单）的条目丢弃并计数。本体提案支持**编辑后确认**（`PATCH /pending/{pid}`，可改 local_name、标签、定义、别名、domain/range，保存后仍可确认）。确认时写入本体注册表（复用 OWL 2 RL 校验与 TTL 物化路径）：类直接入册；对象属性的 domain/range 标签解析为本库已确认类（标签或别名匹配，含同批先确认的类），解析不到则该提案保持待处理并在返回中列出缺失标签与已确认类标签清单，供人工编辑修正；数据属性的 domain 解析规则同上，range 取白名单 xsd 类型；IRI 与现有要素冲突时确认失败并保持待处理。
   - 阶段二实体与关系抽取：不重新切片、不调用嵌入、不写回索引。读取选定范围的现有索引切片正文（Qdrant 载荷），按**本库已确认本体**签名逐切片调用文本模型；模型输出限定为实体与关系两类：实体项含 `term`（必须为切片正文子串）与 `class_iri`（必须在本体签名内），关系项含 `from`、`to`（均为正文子串）与 `type_iri`（必须在本体签名内）；违反约束的输出丢弃并计入任务统计。实体提案落待处理队列（kind=proposal），关系提案落待处理队列（kind=relation_proposal）。
   - 两阶段共同的失败处理：错误按嵌入错误分类处理（见 6.3 节），RATE 与 UPSTREAM 重试 2 次（间隔 2、4 秒），最终失败切片转待处理队列（kind=extract_failed），不中断整体任务。
 - 输出：任务标识（kind=induct / extract）；任务记录含调用数、令牌数、费用估算、成功提案数、丢弃数与失败数。
@@ -173,7 +173,7 @@
 | POST | /relations | 新建关系 | 见 FR-08；写入前按 domain/range 校验，违规转待处理队列 |
 | GET | /pending | 待处理队列 | 分页 |
 | POST | /pending/{id}/resolve | 裁决 | `action: confirm \| reject \| retype` |
-| PATCH | /pending/{id} | 编辑本体提案（编辑后可确认） | local_name、label、definition、aliases、domain、range 均可改 |
+| PATCH | /pending/{id} | 编辑本体提案（编辑后可确认） | local_name、label、definition、aliases、domain、range 均可改（对象属性 range 为类标签，数据属性 range 为 xsd 类型） |
 | GET | /graph?entity_id=&depth= | 图谱浏览 | 见 FR-10 |
 | GET | /stats/corpus/{id} | 花费面板数据 | 见 FR-11 |
 | GET | /healthz | 健康检查 | 无鉴权 |
@@ -278,10 +278,10 @@
 ### 6.5 LLM 本体归纳
 
 1. 输入：选定范围**采样**的索引切片（上限 `KB_INDUCT_SAMPLE_LIMIT`，默认 20；全库范围按切片均匀采样，单文档范围取该文档前 N 片）。
-2. 调用：逐切片调用文本模型（`KB_EXTRACT_MODEL`，百炼兼容模式），并发上限 `KB_EXTRACT_CONCURRENCY`；prompt 要求模型仅输出 JSON：`{"classes":[{"local_name","label","definition","aliases"}],"object_properties":[{"local_name","label","definition","domain","range"}]}`，其中 domain/range 用中文标签引用类。
-3. 校验：`local_name` 匹配 `^[A-Za-z][A-Za-z0-9_]*$`；`label` 与 `definition` 非空；不满足的输出条目丢弃并计入 `extract_discarded`。
-4. 落库：通过校验的候选以 kind=ontology_proposal 落待处理队列，payload 含 `element_kind`（class/object_property）、`local_name`、`label`、`definition`、`aliases`、`domain`、`range`、`iri_preview`（`http://kb.local/o/<prefix>#<local_name>`）与证据锚点。
-5. 确认语义：class 确认 → 经 OWL 2 RL 校验后写入 OntClass 并物化 TTL；object_property 确认 → domain/range 标签解析为本库已确认类（含同批先确认的类），解析失败或 IRI 冲突时保持待处理并附错误原因，成功则写入 OntObjProp 并物化 TTL。
+2. 调用：逐切片调用文本模型（`KB_EXTRACT_MODEL`，百炼兼容模式），并发上限 `KB_EXTRACT_CONCURRENCY`；prompt 要求模型仅输出 JSON：`{"classes":[{"local_name","label","definition","aliases"}],"object_properties":[{"local_name","label","definition","domain","range"}],"datatype_properties":[{"local_name","label","definition","domain","range"}]}`；object_properties 的 domain/range 用中文标签引用类，datatype_properties 的 domain 用中文标签引用类、range 为 xsd 类型。
+3. 校验：`local_name` 匹配 `^[A-Za-z][A-Za-z0-9_]*$`；`label` 与 `definition` 非空；object_properties 的 domain/range 必须为同响应 classes 中的中文标签；datatype_properties 的 domain 同上，range 须在白名单内（中文类型名映射：字符串/文本→string、整数→integer、日期→date、日期时间→dateTime、布尔→boolean、小数/数值→decimal；`xsd:xxx` 形式原样接受）；不满足的输出条目丢弃并计入 `extract_discarded`。
+4. 落库：通过校验的候选以 kind=ontology_proposal 落待处理队列，payload 含 `element_kind`（class/object_property/datatype_property）、`local_name`、`label`、`definition`、`aliases`、`domain`、`range`、`iri_preview`（`http://kb.local/o/<prefix>#<local_name>`）与证据锚点。
+5. 确认语义：class 确认 → 经 OWL 2 RL 校验后写入 OntClass 并物化 TTL；object_property 确认 → domain/range 标签解析为本库已确认类（含同批先确认的类），解析失败或 IRI 冲突时保持待处理并附错误原因，成功则写入 OntObjProp 并物化 TTL；datatype_property 确认 → domain 标签解析规则同上，range 为白名单 xsd 类型，成功写入 OntDataProp 并物化 TTL。
 
 ### 6.6 LLM 实体与关系抽取
 

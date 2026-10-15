@@ -5043,7 +5043,7 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
 
 - [ ] **Step 1: 知识建模模型实测**
 
-写 `scripts/probe_extraction.py`：用 openai 兼容模式调用 `KB_EXTRACT_MODEL`（默认 qwen3.8-max）。两个探针：其一为实体抽取（见 Step 3 的抽取 prompt 格式，循环 3 次验证 JSON 稳定性并记录时延）；其二为**本体归纳**——对一段未建模领域的中文文本（如金融合规内容）跑归纳 prompt（见 Step 3 的归纳 prompt 格式），循环 3 次验证输出 schema 稳定性（classes 与 object_properties 的字段完整、local_name 为英文、domain/range 用中文标签）。用 WebFetch 取百炼官方文档的该模型单价与限流口径。结果写入 `docs/research/extraction-probe.md`（模型名可用性、两套 schema 稳定性、单条时延、官方单价、由此确定的 `.env` 取值）。若 qwen3.8-max 不可用，改用百炼在售等价档并回填 `.env.example` 与 requirements-spec.md 第 4.4 节。
+写 `scripts/probe_extraction.py`：用 openai 兼容模式调用 `KB_EXTRACT_MODEL`（默认 qwen3.8-max）。两个探针：其一为实体抽取（见 Step 3 的抽取 prompt 格式，循环 3 次验证 JSON 稳定性并记录时延）；其二为**本体归纳**——对一段未建模领域的中文文本（如金融合规内容）跑归纳 prompt（见 Step 3 的归纳 prompt 格式），循环 3 次验证输出 schema 稳定性（classes、object_properties 与 datatype_properties 的字段完整、local_name 为英文、domain/range 用中文标签、数据属性 range 为 xsd 类型）。用 WebFetch 取百炼官方文档的该模型单价与限流口径。结果写入 `docs/research/extraction-probe.md`（模型名可用性、两套 schema 稳定性、单条时延、官方单价、由此确定的 `.env` 取值）。若 qwen3.8-max 不可用，改用百炼在售等价档并回填 `.env.example` 与 requirements-spec.md 第 4.4 节。
 
 - [ ] **Step 2: 写失败测试 app/tests/test_extract.py**
 
@@ -5249,14 +5249,46 @@ def build_induction_prompt(text: str) -> str:
         "1. 只输出一个 JSON 对象，格式为 "
         '{"classes":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义","aliases":["别名"]}],'
         '"object_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
-        '"domain":"域类中文标签","range":"值域类中文标签"}]}；\n'
+        '"domain":"域类中文标签","range":"值域类中文标签"}],'
+        '"datatype_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
+        '"domain":"所属类中文标签","range":"xsd类型"}]}；\n'
         "2. local_name 必须是合法的英文标识符；\n"
         "3. label 与 definition 必填，definition 用一句话概括该概念；\n"
         "4. object_properties 的 domain 与 range 必须引用 classes 中的中文标签；\n"
-        "5. 只归纳文本中确实出现、且具有领域通用性的概念；\n"
-        '6. 没有可归纳内容时输出 {"classes":[],"object_properties":[]}。\n\n'
+        "5. datatype_properties 的 domain 必须引用 classes 中的中文标签，range 只能取："
+        "string（字符串/文本）、integer（整数）、date（日期）、dateTime（日期时间）、boolean（布尔）、decimal（小数/数值）；\n"
+        "6. 只归纳文本中确实出现、且具有领域通用性的概念；\n"
+        "7. 最多输出 6 个类、4 个对象属性与 4 个数据属性，只保留最核心、出现频率最高的概念；\n"
+        '8. 没有可归纳内容时输出 {"classes":[],"object_properties":[],"datatype_properties":[]}。\n\n'
         "文本：\n" + text
     )
+
+
+XSD_ALIASES = {
+    "string": "http://www.w3.org/2001/XMLSchema#string",
+    "字符串": "http://www.w3.org/2001/XMLSchema#string",
+    "文本": "http://www.w3.org/2001/XMLSchema#string",
+    "integer": "http://www.w3.org/2001/XMLSchema#integer",
+    "整数": "http://www.w3.org/2001/XMLSchema#integer",
+    "date": "http://www.w3.org/2001/XMLSchema#date",
+    "日期": "http://www.w3.org/2001/XMLSchema#date",
+    "dateTime": "http://www.w3.org/2001/XMLSchema#dateTime",
+    "日期时间": "http://www.w3.org/2001/XMLSchema#dateTime",
+    "boolean": "http://www.w3.org/2001/XMLSchema#boolean",
+    "布尔": "http://www.w3.org/2001/XMLSchema#boolean",
+    "decimal": "http://www.w3.org/2001/XMLSchema#decimal",
+    "小数": "http://www.w3.org/2001/XMLSchema#decimal",
+    "数值": "http://www.w3.org/2001/XMLSchema#decimal",
+}
+
+
+def _resolve_xsd(raw: str) -> str:
+    value = str(raw).strip()
+    if value.startswith("xsd:") and value.split(":", 1)[1] in {
+        "string", "integer", "date", "dateTime", "boolean", "decimal",
+    }:
+        return f"http://www.w3.org/2001/XMLSchema#{value.split(':', 1)[1]}"
+    return XSD_ALIASES.get(value, "")
 
 
 LOCAL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -5266,6 +5298,7 @@ def parse_induction(raw: str, text: str) -> dict:
     data = json.loads(raw)
     classes = []
     object_properties = []
+    datatype_properties = []
     discarded = 0
     for item in data.get("classes", []):
         local_name = str(item.get("local_name", ""))
@@ -5307,7 +5340,36 @@ def parse_induction(raw: str, text: str) -> dict:
             )
         else:
             discarded += 1
-    return {"classes": classes, "object_properties": object_properties, "discarded": discarded}
+    for item in data.get("datatype_properties", []):
+        local_name = str(item.get("local_name", ""))
+        label = str(item.get("label", ""))
+        definition = str(item.get("definition", ""))
+        domain = str(item.get("domain", ""))
+        xsd_iri = _resolve_xsd(item.get("range", ""))
+        if (
+            LOCAL_NAME_RE.match(local_name)
+            and label
+            and definition
+            and domain in labels
+            and xsd_iri
+        ):
+            datatype_properties.append(
+                {
+                    "local_name": local_name,
+                    "label": label,
+                    "definition": definition,
+                    "domain": domain,
+                    "range": xsd_iri,
+                }
+            )
+        else:
+            discarded += 1
+    return {
+        "classes": classes,
+        "object_properties": object_properties,
+        "datatype_properties": datatype_properties,
+        "discarded": discarded,
+    }
 
 
 async def induct_chunk(settings: Settings, text: str) -> tuple[dict, int]:
@@ -5493,6 +5555,26 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
             return {"pid": pid, "action": "confirm", "status": "open",
                     "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
         write_ont_class(driver, corpus_id, entry)
+    elif payload["element_kind"] == "datatype_property":
+        classes = ontology["classes"]
+        label_to_iri = {c.get("label_zh"): c["iri"] for c in classes if c.get("label_zh")}
+        domain_iri = label_to_iri.get(payload.get("domain", ""), "")
+        if not domain_iri:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0,
+                    "error": f"DOMAIN_UNRESOLVED: 类标签未找到「{payload.get('domain', '')}」"}
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "domain_iri": domain_iri,
+            "xsd_range": payload.get("range", "http://www.w3.org/2001/XMLSchema#string"),
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_data_prop(driver, corpus_id, entry)
     else:
         classes = ontology["classes"]
         label_to_iri = {c.get("label_zh"): c["iri"] for c in classes if c.get("label_zh")}
@@ -5703,6 +5785,13 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
                                                   "sha256": chunk["chunk_sha256"]},
                                                  prefix)
                         created_total += 1
+                    for entry in parsed["datatype_properties"]:
+                        create_ontology_proposal(driver, corpus_id, "datatype_property", entry,
+                                                 {"rel_path": chunk["asset_rel_path"],
+                                                  "seq": chunk["seq"],
+                                                  "sha256": chunk["chunk_sha256"]},
+                                                 prefix)
+                        created_total += 1
                 update_task(
                     driver, task_id,
                     status="running",
@@ -5813,7 +5902,7 @@ stats.py 的查询追加 `sum(t.extract_calls) AS extract_calls, sum(t.extract_t
 
 界面：
 - Ontology.vue 的「LLM 辅助知识建模」卡片分两步：**第一步「本体归纳」**（范围单选 +「预估」（显示采样上限说明）+「归纳本体」→ POST `/induct` 并轮询任务，完成后提示到待处理队列确认本体）；**第二步「实体与关系抽取」**（范围单选 +「预估」（显示切片数与预计分钟数）+「执行抽取」→ POST `/extract` 并轮询任务）。本体为空时第二步显示警示（先归纳或手工建本体），接口侧以 400 EMPTY_ONTOLOGY 兜底。
-- Pending.vue：tab 增加 `ontology_proposal`（展示 element_kind、label、definition、iri_preview、domain/range，confirm/reject；confirm 返回 error 时提示原因）、`relation_proposal` 与 `extract_failed`。
+- Pending.vue：tab 增加 `ontology_proposal`（展示 element_kind、label、definition、iri_preview、domain/range，confirm/edit/reject；confirm 返回 error 时提示原因）、`relation_proposal` 与 `extract_failed`。编辑对话框按 element_kind 区分：class 无 domain/range；object_property 的 domain/range 为类标签下拉；datatype_property 的 domain 为类标签下拉、range 为 xsd 类型下拉（string/integer/date/dateTime/boolean/decimal）。
 - Stats.vue：增加「抽取调用数」「抽取费用估算」两张卡片。
 
 - [ ] **Step 7: 测试**
@@ -5848,6 +5937,8 @@ git commit -m "feat: add manual two-stage llm knowledge modeling (induction and 
 ## 实施修正记录
 
 以下修正为实施过程中基于实测环境作出的必要调整，与上文代码块存在差异处以此节为准：
+
+16. **本体归纳扩展数据属性**（Task 15）：初始归纳 schema 仅覆盖类与对象属性，实测发现数据属性（如「名称」「发布日期」）缺失，将归纳 schema 扩展为三类输出（classes/object_properties/datatype_properties），数据属性 range 走 xsd 白名单（中文类型名映射 + `xsd:xxx` 原样接受），确认时写入 OntDataProp 并物化 TTL；提案编辑对话框按 element_kind 区分表单。
 
 1. **锚点建模改为 `(:Anchor)` 节点**（Task 6、7、9、10）：Neo4j 属性只允许基本类型数组，不支持对象数组，`Entity.anchors` 无法作为属性存储。锚点改为 `(:Anchor {rel_path, seq, sha256})` 节点（复合唯一约束），经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联；实体节点不再持有 anchors 属性。neo4j_store 新增 `ensure_anchor_link`、`list_entity_anchors`、`count_entity_anchors`、`move_anchors_to`、`remove_anchor_links`、`list_entities_with_anchors`；proposals 的 `ensure_entity`、`find_entities_by_anchor_rel_path`、`split_entity` 与 search 的 `EXPAND_QUERY`、`CLASS_MATCH_QUERY`、graph_view 的锚点计数均改为经锚点节点查询。Relation 的 `evidence_anchors` 以 JSON 字符串存储。
 2. **本体 IRI 路由使用 `{iri:path}` 转换器**（Task 10）：`/ontology/classes/{iri}` 等六个读写路由改为 `{iri:path}`，避免 IRI 中编码的 `/` 破坏路径匹配。
