@@ -1,15 +1,19 @@
 import hashlib
 import json
 
+from kb.config import get_settings
 from kb.neo4j_store import (
     count_entity_anchors,
     ensure_anchor_link,
     get_ontology,
     list_entity_anchors,
+    new_ont_version,
     new_pending_id,
     remove_anchor_links,
+    write_ont_class,
+    write_ont_obj_prop,
 )
-from kb.ontology import check_relation_valid
+from kb.ontology import check_relation_valid, export_ttl, validate_rl
 
 
 def get_classes_with_aliases(driver, corpus_id: str) -> list[dict]:
@@ -113,6 +117,8 @@ def resolve_pending(driver, pid: str, action: str, new_class_iri: str | None = N
     else:
         if record["kind"] == "relation_proposal":
             return _confirm_relation_proposal(driver, record["corpus_id"], pid, payload)
+        if record["kind"] == "ontology_proposal":
+            return _confirm_ontology_proposal(driver, record["corpus_id"], pid, payload)
         status = "confirmed"
         eid = ensure_entity(
             driver,
@@ -228,6 +234,74 @@ def _confirm_relation_proposal(driver, corpus_id: str, pid: str, payload: dict) 
         session.run("MATCH (p:PendingItem {pid: $pid}) SET p.status = 'confirmed'", pid=pid)
     return {"pid": pid, "action": "confirm", "status": "confirmed",
             "eid": from_eid, "anchor_count": count_entity_anchors(driver, from_eid)}
+
+
+def create_ontology_proposal(driver, corpus_id: str, element_kind: str, entry: dict,
+                             anchor: dict, prefix: str) -> str:
+    return create_pending(driver, corpus_id, "ontology_proposal", {
+        "element_kind": element_kind,
+        "local_name": entry["local_name"],
+        "label": entry["label"],
+        "definition": entry["definition"],
+        "aliases": entry.get("aliases", []),
+        "domain": entry.get("domain", ""),
+        "range": entry.get("range", ""),
+        "iri_preview": f"http://kb.local/o/{prefix}#{entry['local_name']}",
+        "anchor": anchor,
+    })
+
+
+def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) -> dict:
+    ontology = get_ontology(driver, corpus_id)
+    prefix = ontology["base_iri"].rstrip("#").rsplit("/", 1)[-1]
+    iri = payload.get("iri_preview") or f"http://kb.local/o/{prefix}#{payload['local_name']}"
+    existing_iris = {c["iri"] for c in ontology["classes"]} | {
+        p["iri"] for p in ontology["object_properties"]
+    }
+    if iri in existing_iris:
+        return {"pid": pid, "action": "confirm", "status": "open",
+                "eid": "", "anchor_count": 0, "error": "IRI_CONFLICT"}
+    if payload["element_kind"] == "class":
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "aliases": payload.get("aliases", []),
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_class(driver, corpus_id, entry)
+    else:
+        classes = ontology["classes"]
+        label_to_iri = {c.get("label_zh"): c["iri"] for c in classes if c.get("label_zh")}
+        domain_iri = label_to_iri.get(payload.get("domain", ""))
+        range_iri = label_to_iri.get(payload.get("range", ""))
+        if not domain_iri or not range_iri:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "DOMAIN_RANGE_UNRESOLVED"}
+        entry = {
+            "iri": iri,
+            "label_zh": payload["label"],
+            "definition": payload["definition"],
+            "domain_iri": domain_iri,
+            "range_iri": range_iri,
+        }
+        violations = validate_rl(entry)
+        if violations:
+            return {"pid": pid, "action": "confirm", "status": "open",
+                    "eid": "", "anchor_count": 0, "error": "; ".join(violations)}
+        write_ont_obj_prop(driver, corpus_id, entry)
+    seq = new_ont_version(driver, corpus_id)
+    export_ttl(
+        get_ontology(driver, corpus_id),
+        f"{get_settings().kb_ontology_export_dir}/{corpus_id}.ttl",
+    )
+    with driver.session() as session:
+        session.run("MATCH (p:PendingItem {pid: $pid}) SET p.status = 'confirmed'", pid=pid)
+    return {"pid": pid, "action": "confirm", "status": "confirmed",
+            "eid": iri, "anchor_count": 0, "ont_version": seq}
 
 
 def find_entities_by_anchor_rel_path(driver, corpus_id: str, rel_path: str) -> list[dict]:

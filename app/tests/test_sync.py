@@ -5,7 +5,7 @@ from kb.config import Settings, get_settings
 from kb.neo4j_store import delete_corpus, get_driver, get_task, init_schema, upsert_corpus
 from kb.proposals import ensure_entity, list_pending
 from kb.qdrant_store import collection_name
-from kb.sync import file_sha256, run_extract, run_sync, scan_assets
+from kb.sync import file_sha256, run_extract, run_induct, run_sync, scan_assets
 
 CORPUS = {
     "corpus_id": "c-sync", "name": "同步库", "subdir": "acc",
@@ -173,6 +173,48 @@ async def test_run_extract_failure_goes_to_pending(tmp_path, monkeypatch):
     assert record["extract_failed"] == 1
     items = list_pending(driver, "c-sync")
     assert any(i["kind"] == "extract_failed" for i in items)
+
+    delete_corpus(driver, "c-sync")
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+    client.delete_collection(collection_name("c-sync"))
+    driver.close()
+    client.close()
+
+
+@pytest.mark.integration
+async def test_run_induct_creates_ontology_proposals(tmp_path, monkeypatch):
+    (tmp_path / "acc").mkdir()
+    (tmp_path / "acc" / "a.md").write_text("# 标题\n项目组甲的说明文字", encoding="utf-8")
+
+    settings = get_settings_for(tmp_path)
+    FakeEmbed(monkeypatch)
+
+    parsed = {
+        "classes": [{"local_name": "Client", "label": "客户", "definition": "个体", "aliases": []}],
+        "object_properties": [],
+        "discarded": 0,
+    }
+
+    async def fake_induct(settings, text):
+        return parsed, 100, 0
+
+    monkeypatch.setattr("kb.sync.induct_chunk_with_retry", fake_induct)
+
+    driver = get_driver(settings)
+    init_schema(driver)
+    upsert_corpus(driver, CORPUS)
+    await run_sync(settings, "c-sync")
+
+    task = await run_induct(settings, "c-sync")
+    record = get_task(driver, task)
+    assert record["kind"] == "induct"
+    assert record["status"] == "done"
+    assert record["extract_calls"] == 1
+    assert record["proposals"] == 1
+    items = list_pending(driver, "c-sync")
+    assert any(i["kind"] == "ontology_proposal" for i in items)
+    proposal = [i for i in items if i["kind"] == "ontology_proposal"][0]
+    assert proposal["payload"]["iri_preview"] == "http://kb.local/o/csync#Client"
 
     delete_corpus(driver, "c-sync")
     client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)

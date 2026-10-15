@@ -143,3 +143,37 @@ def test_relation_proposal_confirm_creates_entities_and_relation(driver):
     assert rels[0]["t"] == "http://kb.local/o/cprop#belongsTo"
     items = list_pending(driver, "c-prop")
     assert all(i["pid"] != pid for i in items)
+
+
+@pytest.mark.integration
+def test_ontology_proposal_confirm_writes_ontology(driver):
+    from kb.neo4j_store import get_ontology as neo4j_get_ontology
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "h.md", "seq": 0, "sha256": "s-h"}
+    pid_cls = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Client", "label": "客户", "definition": "接受服务的个体", "aliases": []},
+        anchor, "cprop",
+    )
+    result_cls = resolve_pending(driver, pid_cls, "confirm")
+    assert result_cls["status"] == "confirmed"
+    assert result_cls["eid"] == "http://kb.local/o/cprop#Client"
+    ontology = neo4j_get_ontology(driver, "c-prop")
+    assert any(c["iri"] == "http://kb.local/o/cprop#Client" for c in ontology["classes"])
+
+    pid_prop = create_ontology_proposal(
+        driver, "c-prop", "object_property",
+        {"local_name": "serves", "label": "服务", "definition": "项目服务客户",
+         "domain": "项目", "range": "客户"},
+        anchor, "cprop",
+    )
+    result_prop = resolve_pending(driver, pid_prop, "confirm")
+    assert result_prop["status"] == "confirmed"
+    ontology = neo4j_get_ontology(driver, "c-prop")
+    assert any(p["iri"] == "http://kb.local/o/cprop#serves" for p in ontology["object_properties"])
+    with driver.session() as session:
+        rels = session.run(
+            "MATCH (a:Entity {eid: $a})-[r:REL]->(b:Entity) RETURN count(r) AS n", a=""
+        ).single()
+    assert rels is not None

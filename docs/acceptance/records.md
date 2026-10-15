@@ -67,14 +67,16 @@
 - 三者返回一致：首条 note-042.md、anchor sha 6096b4dd…、score 0.016393。
 - `grep run_search app/kb`：实现仅一处（kb/search.py）。
 
-## V11 LLM 抽取闭环 — 通过
+## V11 LLM 知识建模闭环 — 通过
 
-- 语料：`note-v11.md` 含别名未覆盖表述「星河交付」（本体类「项目」别名仅有「项目组/验收项目组」，别名匹配对「星河交付」产不出提案，实测同步 proposals=0）与关系句「张三属于星河交付」。
-- 手动触发：`POST /corpora/364db128e988/extract`（scope=file, file_path=note-v11.md），任务 kind=extract、status=done，extract_calls=2、extract_tokens=1644、proposals=7、extract_discarded=0、extract_failed=0、extract_cost_estimate=0.002713 元。
-- 提案：pending 出现实体提案（星河交付→Project、张三/李四→Person）与关系提案（张三 belongsTo 星河交付），锚点均指向 note-v11 切片。
-- 确认：confirm 关系提案后两端实体自动建立（Person 张三、Project 星河交付，各 1 锚点），关系建立（图谱 2 节点 1 边），domain/range 校验通过；检索「星河交付」首条命中 note-v11.md#1。
-- 幻觉校验：本次模型无幻觉输出（discarded=0）；幻觉丢弃逻辑由单测 `test_parse_extraction_discards_hallucinated_term` 与 `test_parse_extraction_discards_unknown_iri` 覆盖。
-- 成本：单切片调用约 800 tokens ≈ 0.0013 元（单价 qwen3.8-max 输入 0.00165 元/千 tokens，见 [docs/research/extraction-probe.md](research/extraction-probe.md)）。
+两阶段手动流程，库 `a40f39edc1e0`（归纳验收库，空本体起步），语料 `note-induct.md`（金融领域：金融产品/金融机构/风险/法规 + 关系句）。
+
+**阶段一本体归纳**：`POST /induct`（scope=file），任务 kind=induct、status=done，extract_calls=3、extract_tokens=6023、proposals=21、extract_discarded=2、extract_failed=0、extract_cost_estimate=0.009938 元。待处理队列出现 21 条 ontology_proposal（9 类 + 9 属性 + 重复项，含 iri_preview 与中文标签/定义）。逐条 confirm：9 个类写入注册表，9 个对象属性（domain/range 按中文标签解析到已确认类）写入注册表；本体导出 TTL 含 FinancialProduct、sellsProduct 等新要素。
+
+**阶段二实体与关系抽取**：`POST /extract`（scope=file），任务 kind=extract、status=done，extract_calls=3、extract_tokens=5733、proposals=21、discarded=0、failed=0、extract_cost_estimate=0.009459 元。提案全部绑定到阶段一确认的类与属性（实体：金融产品→FinancialProduct、投资者→Investor、风险→Risk 等；关系：sellsProduct、disclosesRisk 等）。confirm 后实体建立（9 个实体、类归属正确）、关系建立（图谱 2 节点 1 边、domain/range 校验通过）；检索「金融产品」首条命中 note-induct.md#1。
+
+- 幻觉丢弃：阶段一 discarded=2（本地名校验与重复类丢弃），负例由单测 `test_parse_induction_*` 与 `test_parse_extraction_*` 覆盖。
+- 成本：归纳 3 片 0.010 元 + 抽取 3 片 0.009 元；单切片归纳约 75~115 秒（见 [docs/research/extraction-probe.md](research/extraction-probe.md)）。
 
 ## 待人工闭环
 

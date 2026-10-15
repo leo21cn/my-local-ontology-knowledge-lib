@@ -1,6 +1,7 @@
 <template>
   <div>
     <el-tabs v-model="kind">
+      <el-tab-pane label="本体提案" name="ontology_proposal" />
       <el-tab-pane label="实体提案" name="proposal" />
       <el-tab-pane label="关系提案" name="relation_proposal" />
       <el-tab-pane label="校验违规" name="violation" />
@@ -19,7 +20,7 @@
       <el-table-column prop="status" label="状态" width="90" />
       <el-table-column label="操作" width="260">
         <template #default="{ row }">
-          <el-button v-if="['proposal', 'relation_proposal'].includes(row.kind)" size="small" type="primary" @click="resolve(row, 'confirm')">确认</el-button>
+          <el-button v-if="['proposal', 'relation_proposal', 'ontology_proposal'].includes(row.kind)" size="small" type="primary" @click="resolve(row, 'confirm')">确认</el-button>
           <el-button size="small" type="danger" @click="resolve(row, 'reject')">拒绝</el-button>
           <el-button v-if="row.kind === 'proposal'" size="small" @click="retypeFor = row; retypeDialog = true">改类型</el-button>
         </template>

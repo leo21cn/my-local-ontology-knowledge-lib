@@ -11,7 +11,7 @@ from qdrant_client.models import PointStruct
 from kb.chunker import chunk_markdown, chunk_sha256, extract_frontmatter
 from kb.config import Settings
 from kb.embed import EmbedError, embed_with_retry
-from kb.extract import build_signature, extract_chunk_with_retry
+from kb.extract import build_signature, extract_chunk_with_retry, induct_chunk_with_retry
 from kb.neo4j_store import (
     get_corpus,
     get_driver,
@@ -22,6 +22,7 @@ from kb.neo4j_store import (
     update_task,
 )
 from kb.proposals import (
+    create_ontology_proposal,
     create_pending,
     find_entities_by_anchor_rel_path,
     generate_entity_proposals,
@@ -444,3 +445,98 @@ async def estimate_extract(settings: Settings, corpus_id: str) -> dict:
         "chunks": len(chunks),
         "estimated_minutes": round(estimated_seconds / 60, 1),
     }
+
+
+async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
+                     file_path: str | None = None, task_id: str | None = None) -> str:
+    task_id = task_id or uuid4().hex
+    driver = get_driver(settings)
+    client = qdrant_client(settings)
+    try:
+        init_schema(driver)
+        corpus = get_corpus(driver, corpus_id)
+        if corpus is None:
+            raise ValueError(f"corpus not found: {corpus_id}")
+        record_task(driver, task_id, corpus_id, "running", kind="induct")
+        prefix = corpus.get("ontology_prefix", corpus_id)
+        all_chunks = _collect_chunks(client, corpus_id, scope, file_path)
+        limit = max(1, settings.kb_induct_sample_limit)
+        if len(all_chunks) > limit:
+            step = len(all_chunks) / limit
+            chunks = [all_chunks[int(i * step)] for i in range(limit)]
+        else:
+            chunks = all_chunks
+
+        semaphore = asyncio.Semaphore(settings.kb_extract_concurrency)
+        calls_total = 0
+        tokens_total = 0
+        failed_total = 0
+        discarded_total = 0
+        created_total = 0
+
+        async def induct_one(chunk: dict) -> None:
+            nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            async with semaphore:
+                try:
+                    parsed, tokens, _ = await induct_chunk_with_retry(
+                        settings, chunk["text"]
+                    )
+                except EmbedError as exc:
+                    failed_total += 1
+                    create_pending(
+                        driver, corpus_id, "extract_failed",
+                        {"chunk_id": chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"]),
+                         "error_code": exc.code.value, "message": exc.message[:200]},
+                    )
+                else:
+                    calls_total += 1
+                    tokens_total += tokens
+                    discarded_total += parsed["discarded"]
+                    anchor = {"rel_path": chunk["asset_rel_path"], "seq": chunk["seq"],
+                              "sha256": chunk["chunk_sha256"]}
+                    for entry in parsed["classes"]:
+                        create_ontology_proposal(driver, corpus_id, "class", entry,
+                                                 anchor, prefix)
+                        created_total += 1
+                    for entry in parsed["object_properties"]:
+                        create_ontology_proposal(driver, corpus_id, "object_property", entry,
+                                                 anchor, prefix)
+                        created_total += 1
+                update_task(
+                    driver, task_id,
+                    status="running",
+                    doc_total=len(chunks),
+                    proposals=created_total,
+                    extract_calls=calls_total,
+                    extract_tokens=tokens_total,
+                    extract_failed=failed_total,
+                    extract_discarded=discarded_total,
+                    extract_cost_estimate=round(
+                        tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+                    ),
+                )
+
+        await asyncio.gather(*(induct_one(chunk) for chunk in chunks))
+
+        update_task(
+            driver, task_id,
+            status="partial" if failed_total else "done",
+            doc_total=len(chunks),
+            proposals=created_total,
+            extract_calls=calls_total,
+            extract_tokens=tokens_total,
+            extract_failed=failed_total,
+            extract_discarded=discarded_total,
+            extract_cost_estimate=round(
+                tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+            ),
+            error_code="INDUCT_PARTIAL" if failed_total else "",
+            finished_at=time.time(),
+        )
+    except Exception:
+        update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
+        raise
+    finally:
+        driver.close()
+        client.close()
+    return task_id

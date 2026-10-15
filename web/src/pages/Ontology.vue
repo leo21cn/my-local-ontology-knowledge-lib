@@ -52,13 +52,13 @@
       </el-table>
     </el-card>
 
-    <el-card header="LLM 辅助抽取" style="margin-top: 12px">
+    <el-card header="LLM 辅助知识建模" style="margin-top: 12px">
       <el-alert
         v-if="!ontology.classes.length && !ontology.object_properties.length"
         type="warning"
         :closable="false"
         style="margin-bottom: 10px"
-        title="本体为空：LLM 抽取以本体签名为约束。请先在上方创建至少一个类（建议配别名）或对象属性，再执行抽取。"
+        title="本体为空：请先执行下方第一步「本体归纳」并把候选本体在待处理队列中确认，再执行第二步实体抽取。"
       />
       <el-form inline>
         <el-form-item label="范围">
@@ -73,24 +73,24 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button @click="estimateExtract">预估</el-button>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="warning" :loading="extracting" @click="confirmExtract">执行抽取</el-button>
-        </el-form-item>
-        <el-form-item>
           <el-button @click="$router.push('/pending')">前往待处理队列</el-button>
         </el-form-item>
       </el-form>
-      <div v-if="extractEstimate !== null" style="margin-top: 6px">
-        预估：切片 {{ extractEstimate.chunks }} 个（即抽取调用数上限），按当前并发约需 {{ extractEstimate.estimated_minutes }} 分钟
+      <div style="margin: 6px 0">
+        第一步：<el-button size="small" @click="estimateInduct">预估</el-button>
+        <el-button size="small" type="primary" :loading="inducting" @click="confirmInduct">归纳本体</el-button>
+        <span v-if="inductEstimate !== null"> 采样切片 {{ inductEstimate.chunks }} 个（上限 20），约 {{ inductEstimate.estimated_minutes }} 分钟</span>
+        <span v-if="inductTask" style="margin-left: 10px">
+          任务 {{ inductTask.task_id.slice(0, 8) }}：{{ inductTask.status }}，调用 {{ inductTask.extract_calls }}，提案 {{ inductTask.proposals }}，失败 {{ inductTask.extract_failed }}
+        </span>
       </div>
-      <div v-if="extractTask" style="margin-top: 6px">
-        任务 {{ extractTask.task_id }}：状态 {{ extractTask.status }}，
-        调用 {{ extractTask.extract_calls }}，令牌 {{ extractTask.extract_tokens }}，
-        提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，
-        失败 {{ extractTask.extract_failed }}，
-        费用估算 {{ extractTask.extract_cost_estimate }}
+      <div style="margin: 6px 0">
+        第二步：<el-button size="small" @click="estimateExtract">预估</el-button>
+        <el-button size="small" type="warning" :loading="extracting" @click="confirmExtract">执行抽取</el-button>
+        <span v-if="extractEstimate !== null"> 切片 {{ extractEstimate.chunks }} 个，约 {{ extractEstimate.estimated_minutes }} 分钟</span>
+        <span v-if="extractTask" style="margin-left: 10px">
+          任务 {{ extractTask.task_id.slice(0, 8) }}：{{ extractTask.status }}，调用 {{ extractTask.extract_calls }}，提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，失败 {{ extractTask.extract_failed }}
+        </span>
       </div>
     </el-card>
 
@@ -166,14 +166,74 @@ const assets = ref([])
 const extractEstimate = ref(null)
 const extractTask = ref(null)
 const extracting = ref(false)
+const inductEstimate = ref(null)
+const inductTask = ref(null)
+const inducting = ref(false)
 let extractTimer = null
+let inductTimer = null
 
 onMounted(load)
-onUnmounted(() => extractTimer && clearInterval(extractTimer))
+onUnmounted(() => {
+  extractTimer && clearInterval(extractTimer)
+  inductTimer && clearInterval(inductTimer)
+})
 
 async function load() {
   ontology.value = await api.get(`/api/v1/ontology/${id}`)
   assets.value = await api.get(`/api/v1/corpora/${id}/assets`)
+}
+
+function payloadFor() {
+  const payload = { scope: extractForm.scope }
+  if (extractForm.scope === 'file') {
+    if (!extractForm.file_path) {
+      ElMessage.error('请选择文档')
+      return null
+    }
+    payload.file_path = extractForm.file_path
+  }
+  return payload
+}
+
+async function estimateInduct() {
+  try {
+    inductEstimate.value = await api.get(`/api/v1/corpora/${id}/extract/estimate`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  }
+}
+
+async function pollInduct(taskId) {
+  inductTimer && clearInterval(inductTimer)
+  inductTimer = setInterval(async () => {
+    inductTask.value = await api.get(`/api/v1/tasks/${taskId}`)
+    if (['done', 'partial', 'failed'].includes(inductTask.value.status)) {
+      clearInterval(inductTimer)
+      inductTimer = null
+      ElMessage.success('本体归纳完成，请到待处理队列确认候选本体')
+      await load()
+    }
+  }, 3000)
+}
+
+async function confirmInduct() {
+  try {
+    const payload = payloadFor()
+    if (!payload) return
+    await ElMessageBox.confirm(
+      '本体归纳将采样最多 20 个切片调用 LLM（每个约 1~2 分钟），产出候选类与对象属性进入待处理队列，确认后写入本体。确认执行？',
+      '本体归纳确认',
+      { type: 'warning' }
+    )
+    inducting.value = true
+    const resp = await api.post(`/api/v1/corpora/${id}/induct`, payload)
+    inductTask.value = null
+    await pollInduct(resp.task_id)
+  } catch (err) {
+    if (err !== 'cancel') ElMessage.error(err.message)
+  } finally {
+    inducting.value = false
+  }
 }
 
 async function estimateExtract() {
@@ -198,14 +258,8 @@ async function pollExtract(taskId) {
 
 async function confirmExtract() {
   try {
-    const payload = { scope: extractForm.scope }
-    if (extractForm.scope === 'file') {
-      if (!extractForm.file_path) {
-        ElMessage.error('请选择文档')
-        return
-      }
-      payload.file_path = extractForm.file_path
-    }
+    const payload = payloadFor()
+    if (!payload) return
     await ElMessageBox.confirm(
       '抽取将逐切片调用 LLM 模型并按量计费，产出提案进入待处理队列，需人工确认后生效。确认执行？',
       'LLM 抽取确认',

@@ -139,6 +139,20 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
     return {"data": {"task_id": job.job_id}}
 
 
+@router.post("/{corpus_id}/induct")
+async def trigger_induct(corpus_id: str, request: Request, body: ExtractTrigger,
+                         driver=Depends(get_neo4j)):
+    if get_corpus(driver, corpus_id) is None:
+        raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    trigger = body or ExtractTrigger()
+    job = await request.app.state.arq.enqueue_job(
+        "induct_job", corpus_id, trigger.scope, trigger.file_path
+    )
+    if job is None:
+        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+    return {"data": {"task_id": job.job_id}}
+
+
 @router.get("/{corpus_id}/assets")
 async def list_assets(corpus_id: str, driver=Depends(get_neo4j), client=Depends(get_qdrant_client)):
     from kb.qdrant_store import get_asset_hashes

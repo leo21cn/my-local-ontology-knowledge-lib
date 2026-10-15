@@ -31,6 +31,13 @@ async def extract_job(ctx, corpus_id: str, scope: str = "all",
     )
 
 
+async def induct_job(ctx, corpus_id: str, scope: str = "all",
+                     file_path: str | None = None) -> str:
+    return await sync_module.run_induct(
+        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+    )
+
+
 async def poll_all(ctx) -> None:
     settings = get_settings()
     driver = sync_module.get_driver(settings)
@@ -43,7 +50,7 @@ async def poll_all(ctx) -> None:
 
 
 class WorkerSettings:
-    functions = [run_sync_job, rebuild_job, extract_job, poll_all]
+    functions = [run_sync_job, rebuild_job, extract_job, induct_job, poll_all]
     cron_jobs = [
         cron(
             poll_all,
