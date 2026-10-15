@@ -9,6 +9,14 @@
       <el-tab-pane label="抽取失败" name="extract_failed" />
     </el-tabs>
 
+    <el-alert
+      v-if="kind === 'ontology_proposal'"
+      type="info"
+      :closable="false"
+      style="margin-bottom: 10px"
+      title="建议先确认「类」提案，再确认「对象属性」提案：对象属性的 domain/range 引用类标签，对应类未确认时确认会失败。"
+    />
+
     <el-table :data="grouped" border>
       <el-table-column prop="pid" label="ID" width="260" show-overflow-tooltip />
       <el-table-column label="摘要">
@@ -88,7 +96,16 @@ const editFor = ref(null)
 const editForm = ref({})
 const classLabels = ref([])
 
-const grouped = computed(() => items.value.filter((i) => i.kind === kind.value))
+const grouped = computed(() => {
+  const list = items.value.filter((i) => i.kind === kind.value)
+  if (kind.value === 'ontology_proposal') {
+    return [...list].sort((a, b) => {
+      const rank = (x) => (x.payload?.element_kind === 'class' ? 0 : 1)
+      return rank(a) - rank(b)
+    })
+  }
+  return list
+})
 const iriPreview = computed(() => {
   const p = editForm.value?.iri_preview || 'http://kb.local/o/#'
   const base = p.slice(0, p.lastIndexOf('#') + 1)

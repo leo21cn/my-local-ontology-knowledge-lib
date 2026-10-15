@@ -102,6 +102,23 @@ def _pending_payload(driver, pid: str) -> dict:
     }
 
 
+def _pending_class_labels(driver, corpus_id: str) -> set[str]:
+    with driver.session() as session:
+        rows = session.run(
+            """
+            MATCH (p:PendingItem {corpus_id: $corpus_id, kind: 'ontology_proposal', status: 'open'})
+            RETURN p.payload AS payload
+            """,
+            corpus_id=corpus_id,
+        ).data()
+    labels = set()
+    for row in rows:
+        payload = json.loads(row["payload"]) if row["payload"] else {}
+        if payload.get("element_kind") == "class" and payload.get("label"):
+            labels.add(payload["label"])
+    return labels
+
+
 def edit_ontology_proposal(driver, pid: str, fields: dict) -> dict:
     record = _pending_payload(driver, pid)
     if record["kind"] != "ontology_proposal":
@@ -321,9 +338,21 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
                 label for label, iri in ((domain_label, domain_iri), (range_label, range_iri)) if not iri
             ]
             available = "、".join(sorted(set(c.get("label_zh", "") for c in classes if c.get("label_zh"))))
+            pending_class_labels = _pending_class_labels(driver, corpus_id)
+            hints = []
+            for label in missing:
+                if label in pending_class_labels:
+                    hints.append(f"待确认的类提案中存在「{label}」，请先在「本体提案」页签确认该类")
+                else:
+                    hints.append(f"类「{label}」不存在于已确认类或待确认类提案中，请编辑提案改用其他类标签，或先补建该类")
+            base = "DOMAIN_RANGE_UNRESOLVED: 类标签未找到 " + str(missing)
+            if not available:
+                base += "（该库尚无任何已确认的类）"
+            else:
+                base += f"（已确认类的标签：{available}）"
+            base += "。" + "；".join(hints) + "。"
             return {"pid": pid, "action": "confirm", "status": "open",
-                    "eid": "", "anchor_count": 0,
-                    "error": f"DOMAIN_RANGE_UNRESOLVED: 类标签未找到 {missing}（已确认类的标签：{available}），请编辑提案修正 domain/range 后重试"}
+                    "eid": "", "anchor_count": 0, "error": base}
         entry = {
             "iri": iri,
             "label_zh": payload["label"],
