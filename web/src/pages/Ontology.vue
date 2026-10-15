@@ -53,6 +53,13 @@
     </el-card>
 
     <el-card header="LLM 辅助抽取" style="margin-top: 12px">
+      <el-alert
+        v-if="!ontology.classes.length && !ontology.object_properties.length"
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 10px"
+        title="本体为空：LLM 抽取以本体签名为约束。请先在上方创建至少一个类（建议配别名）或对象属性，再执行抽取。"
+      />
       <el-form inline>
         <el-form-item label="范围">
           <el-radio-group v-model="extractForm.scope">
@@ -76,7 +83,7 @@
         </el-form-item>
       </el-form>
       <div v-if="extractEstimate !== null" style="margin-top: 6px">
-        预估：切片 {{ extractEstimate.chunks }} 个（即抽取调用数上限）
+        预估：切片 {{ extractEstimate.chunks }} 个（即抽取调用数上限），按当前并发约需 {{ extractEstimate.estimated_minutes }} 分钟
       </div>
       <div v-if="extractTask" style="margin-top: 6px">
         任务 {{ extractTask.task_id }}：状态 {{ extractTask.status }}，

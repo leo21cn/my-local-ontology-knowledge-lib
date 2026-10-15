@@ -1,5 +1,6 @@
 import hashlib
 import asyncio
+import logging
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -41,6 +42,8 @@ from kb.qdrant_store import (
 SUFFIXES = {".md", ".markdown", ".txt"}
 
 EMBED_CONCURRENCY = 4
+
+logger = logging.getLogger(__name__)
 
 
 def qdrant_client(settings: Settings) -> QdrantClient:
@@ -381,11 +384,28 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
                         {"chunk_id": chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"]),
                          "error_code": exc.code.value, "message": exc.message[:200]},
                     )
-                    return
-            calls_total += 1
-            tokens_total += tokens
-            discarded_total += parsed["discarded"]
-            created_total += generate_llm_proposals(driver, corpus_id, [chunk], [parsed])
+                else:
+                    calls_total += 1
+                    tokens_total += tokens
+                    discarded_total += parsed["discarded"]
+                    created_total += generate_llm_proposals(driver, corpus_id, [chunk], [parsed])
+                update_task(
+                    driver, task_id,
+                    status="running",
+                    doc_total=len(chunks),
+                    proposals=created_total,
+                    extract_calls=calls_total,
+                    extract_tokens=tokens_total,
+                    extract_failed=failed_total,
+                    extract_discarded=discarded_total,
+                    extract_cost_estimate=round(
+                        tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
+                    ),
+                )
+                logger.info(
+                    "extract progress: %s/%s chunks, %s proposals, %s failed",
+                    calls_total + failed_total, len(chunks), created_total, failed_total,
+                )
 
         await asyncio.gather(*(extract_one(chunk) for chunk in chunks))
 
@@ -419,4 +439,8 @@ async def estimate_extract(settings: Settings, corpus_id: str) -> dict:
         chunks = _collect_chunks(client, corpus_id, "all", None)
     finally:
         client.close()
-    return {"chunks": len(chunks)}
+    estimated_seconds = len(chunks) * 30 / max(1, settings.kb_extract_concurrency)
+    return {
+        "chunks": len(chunks),
+        "estimated_minutes": round(estimated_seconds / 60, 1),
+    }

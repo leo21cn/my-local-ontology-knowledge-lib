@@ -123,6 +123,13 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
                           driver=Depends(get_neo4j)):
     if get_corpus(driver, corpus_id) is None:
         raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
+    ontology = get_ontology(driver, corpus_id)
+    if not ontology["classes"] and not ontology["object_properties"]:
+        raise HTTPException(
+            400,
+            detail={"code": "EMPTY_ONTOLOGY",
+                    "message": "本体为空：请先在本体页创建至少一个类或对象属性，再执行 LLM 抽取"},
+        )
     trigger = body or ExtractTrigger()
     job = await request.app.state.arq.enqueue_job(
         "extract_job", corpus_id, trigger.scope, trigger.file_path
