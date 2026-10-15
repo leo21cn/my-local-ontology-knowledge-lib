@@ -1,8 +1,0 @@
-@prefix kb: <http://kb.local/o/dbg#> .
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
-kb:Project a owl:Class ;
-    rdfs:label "项目"@zh ;
-    rdfs:comment "d" .
-
