@@ -173,6 +173,7 @@
 | POST | /relations | 新建关系 | 见 FR-08；写入前按 domain/range 校验，违规转待处理队列 |
 | GET | /pending | 待处理队列 | 分页 |
 | POST | /pending/{id}/resolve | 裁决 | `action: confirm \| reject \| retype` |
+| PATCH | /pending/{id} | 编辑本体提案（编辑后可确认） | local_name、label、definition、aliases、domain、range 均可改 |
 | GET | /graph?entity_id=&depth= | 图谱浏览 | 见 FR-10 |
 | GET | /stats/corpus/{id} | 花费面板数据 | 见 FR-11 |
 | GET | /healthz | 健康检查 | 无鉴权 |
