@@ -5036,4 +5036,5 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
 12. **对象属性保存即入队违规**：create/patch object-properties 除返回 violations 外，将违规关系以 kind=violation 写入待处理队列（FR-07）。
 13. **同步/重建任务 ID 与 arq 对齐**：`run_sync`/`run_rebuild` 接受外部 task_id，worker 传入 `ctx["job_id"]`，保证 API 返回的任务标识即任务记录 ID。
 14. **测试隔离与 Windows 编码**：本机 PowerShell 命令行中文字面量会被 GBK 破坏，验收载荷一律经 UTF-8 文件注入；python 子进程在缺少 DSH 沙箱写入授权的目录（如 knowledge-lib-base-folder）无法写文件，语料生成以 PowerShell + UTF-8 模板完成。
+15. **nginx 动态解析上游**（Task 11）：api 容器 `--force-recreate` 后 IP 变化，web 容器 nginx 启动时缓存的旧 IP 导致 502 Bad Gateway。nginx 配置改为 `resolver 127.0.0.11` + 变量化 `proxy_pass`，每请求动态解析 `api` 服务名。
 

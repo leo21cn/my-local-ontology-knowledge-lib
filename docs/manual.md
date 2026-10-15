@@ -313,6 +313,7 @@ docker compose up -d worker api
 | 界面 401 | 令牌错误或 localStorage 中的旧令牌失效，界面会清空并要求重新输入（取 `.env` 的 KB_AUTH_TOKEN） |
 | 删除文件后实体仍在 | 符合设计：切片/向量已移除，实体不自动删除，相关锚点以 violation 进入待处理队列，由你裁决 |
 | MCP 连接失败 | 使用 `http://127.0.0.1:8101/mcp/`（带尾斜杠）且请求头带 Bearer 令牌 |
+| 界面出现 Bad Gateway (502) | web 容器内 nginx 对 api 的解析过期（api 容器重建后 IP 变化）。nginx 已配置为每请求动态解析（resolver 127.0.0.11），正常不会复发；如更换了 web 镜像或改动 nginx 配置后仍出现，执行 `docker compose up -d --build --force-recreate web` |
 | 容器里无密钥（同步 AUTH 失败） | 见 9.1：新终端未 export 就执行了 compose 命令 |
 | 中文在脚本里乱码 | 本机 PowerShell 命令行中文会被 GBK 破坏：脚本化调用请把 JSON 载荷写成 UTF-8 文件再读取注入；日常中文操作直接用 Web 界面（无此问题） |
 | 定时轮询没生效 | worker 未启动或重启过；`docker logs kb-worker` 应见 `cron:poll_all` 计划行 |
