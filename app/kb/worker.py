@@ -62,4 +62,4 @@ class WorkerSettings:
         os.environ.get("REDIS_URL", "redis://127.0.0.1:6380/0")
     )
     max_tries = 3
-    job_timeout = 1800
+    job_timeout = 10800

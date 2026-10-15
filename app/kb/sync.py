@@ -233,6 +233,9 @@ async def run_sync(settings: Settings, corpus_id: str, scope: str = "all",
         ensure_collection(client, corpus_id, corpus["vector_dim"])
         targets = [file_path] if scope == "file" and file_path else None
         await _sync_assets(settings, driver, client, corpus, task_id, targets)
+    except asyncio.CancelledError:
+        update_task(driver, task_id, status="failed", error_code="ABORTED", finished_at=time.time())
+        raise
     except Exception:
         update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
         raise
@@ -295,6 +298,9 @@ async def run_rebuild(settings: Settings, corpus_id: str, mode: str,
                 cost_estimate=0.0,
                 finished_at=time.time(),
             )
+    except asyncio.CancelledError:
+        update_task(driver, task_id, status="failed", error_code="ABORTED", finished_at=time.time())
+        raise
     except Exception:
         update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
         raise
@@ -425,6 +431,9 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
             error_code="EXTRACT_PARTIAL" if failed_total else "",
             finished_at=time.time(),
         )
+    except asyncio.CancelledError:
+        update_task(driver, task_id, status="failed", error_code="ABORTED", finished_at=time.time())
+        raise
     except Exception:
         update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
         raise
@@ -537,6 +546,9 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
             error_code="INDUCT_PARTIAL" if failed_total else "",
             finished_at=time.time(),
         )
+    except asyncio.CancelledError:
+        update_task(driver, task_id, status="failed", error_code="ABORTED", finished_at=time.time())
+        raise
     except Exception:
         update_task(driver, task_id, status="failed", error_code="INTERNAL", finished_at=time.time())
         raise

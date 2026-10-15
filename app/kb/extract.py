@@ -79,7 +79,8 @@ def parse_extraction(raw: str, text: str, signature: dict) -> dict:
 
 
 async def extract_chunk(settings: Settings, text: str, signature: dict) -> tuple[dict, int]:
-    client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=BASE_URL, timeout=60.0)
+    client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=BASE_URL,
+                         timeout=180.0, max_retries=0)
     try:
         resp = await client.chat.completions.create(
             model=settings.kb_extract_model,
@@ -253,7 +254,8 @@ def parse_induction(raw: str, text: str) -> dict:
 
 
 async def induct_chunk(settings: Settings, text: str) -> tuple[dict, int]:
-    client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=BASE_URL, timeout=180.0)
+    client = AsyncOpenAI(api_key=settings.dashscope_api_key, base_url=BASE_URL,
+                         timeout=180.0, max_retries=0)
     try:
         resp = await client.chat.completions.create(
             model=settings.kb_extract_model,
