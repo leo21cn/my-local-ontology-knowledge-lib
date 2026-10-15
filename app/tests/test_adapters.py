@@ -31,6 +31,12 @@ def client(monkeypatch):
     return TestClient(create_app())
 
 
+@pytest.fixture(scope="module")
+def mcp_client():
+    with TestClient(create_app()) as test_client:
+        yield test_client
+
+
 def test_retrieval_returns_dify_shape(client):
     resp = client.post(
         "/retrieval",
@@ -69,12 +75,12 @@ def test_retrieval_requires_token(client):
     assert resp.status_code == 401
 
 
-def test_mcp_requires_token(client):
-    resp = client.get("/mcp")
+def test_mcp_requires_token(mcp_client):
+    resp = mcp_client.get("/mcp")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
-def test_mcp_accepts_token(client):
-    resp = client.get("/mcp", headers=HEADERS)
+def test_mcp_accepts_token(mcp_client):
+    resp = mcp_client.get("/mcp", headers=HEADERS)
     assert resp.status_code != 401

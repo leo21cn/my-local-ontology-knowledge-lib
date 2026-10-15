@@ -1,0 +1,8 @@
+{
+  "iri": "http://kb.local/o/acc#belongsTo",
+  "prefix_local": "belongsTo",
+  "label_zh": "属于",
+  "definition": "人员从属于项目",
+  "domain_iri": "http://kb.local/o/acc#Person",
+  "range_iri": "http://kb.local/o/acc#Person"
+}

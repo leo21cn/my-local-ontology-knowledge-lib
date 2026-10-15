@@ -1,0 +1,22 @@
+@prefix kb: <http://kb.local/o/c1#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+kb:belongsTo a owl:ObjectProperty,
+        owl:TransitiveProperty ;
+    rdfs:label "属于"@zh ;
+    rdfs:comment "从属关系" ;
+    rdfs:domain kb:Person ;
+    rdfs:range kb:Project .
+
+kb:note a owl:DatatypeProperty ;
+    rdfs:label "备注"@zh ;
+    rdfs:comment "自由文本" ;
+    rdfs:domain kb:Project ;
+    rdfs:range xsd:string .
+
+kb:Project a owl:Class ;
+    rdfs:label "项目"@zh ;
+    rdfs:comment "一个交付单元" .
+

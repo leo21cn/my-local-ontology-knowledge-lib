@@ -5029,4 +5029,11 @@ git commit -m "test: add acceptance corpus generator and V1-V10 execution record
 5. **版本锁定**：`mcp>=1.2,<2`（v2 移除 FastMCP 且 API 变更）；`openai>=1.40,<2`（3.x 自带 fork 的 httpx，respx 无法拦截）；respx 测试默认 `assert_all_mocked` 会拦截 Qdrant 等真实请求，sync 测试改用函数替换方案。
 6. **构建期网络**：宿主机与容器内 pip 直连缓慢或挂起，app/Dockerfile 的 `pip install` 显式使用清华镜像 `-i https://pypi.tuna.tsinghua.edu.cn/simple`；宿主机 venv 安装加 `--no-cache-dir --no-build-isolation`（pip 写本地 HTTP 缓存在本机挂起）。
 7. **MCP 端点普通 GET 行为**：流式端点对无 Accept 头的 GET 返回 307/404 而非 200/406，Task 12 Step 7 的预期已改为「非 401」。
+8. **MCP 挂载集成**（Task 12）：FastMCP 的 `streamable_http_app()` 内部路由写死 `/mcp` 且自带 lifespan，直接 `app.mount("/mcp", ...)` 会得到 /mcp/mcp 路由并丢失会话管理器生命周期。实现改为：`mcp.settings.streamable_http_path = "/"`、每个 `create_app()` 实例经 `build_streamable_app()` 创建子应用与 session_manager，FastAPI lifespan 内 `async with session_manager.run()`，再 mount 到 `/mcp`。MCP 客户端须以 `/mcp/`（尾斜杠）访问。
+9. **Qdrant 点 ID 归一化**：upsert 用纯 hex 前缀（32 位），Qdrant 返回带连字符的 UUID 字符串；检索融合与结构重建的 `by_id` 查找统一 `replace("-", "")` 归一化。
+10. **`fetch_points` 返回向量**：qdrant `retrieve` 默认 `with_vectors=False`，结构重建需要向量，已显式 `with_vectors=True`。
+11. **retrieve 上下文路径**：`run_search` 回源读文件须拼接库子目录（`kb_corpus_root / corpus.subdir`），否则锚点相对路径定位失败。
+12. **对象属性保存即入队违规**：create/patch object-properties 除返回 violations 外，将违规关系以 kind=violation 写入待处理队列（FR-07）。
+13. **同步/重建任务 ID 与 arq 对齐**：`run_sync`/`run_rebuild` 接受外部 task_id，worker 传入 `ctx["job_id"]`，保证 API 返回的任务标识即任务记录 ID。
+14. **测试隔离与 Windows 编码**：本机 PowerShell 命令行中文字面量会被 GBK 破坏，验收载荷一律经 UTF-8 文件注入；python 子进程在缺少 DSH 沙箱写入授权的目录（如 knowledge-lib-base-folder）无法写文件，语料生成以 PowerShell + UTF-8 模板完成。
 

@@ -1,0 +1,5 @@
+{
+  "label": "人员乙",
+  "class_iri": "http://kb.local/o/acc#Person",
+  "anchor": {"rel_path": "note-010.md", "seq": 0, "sha256": "35989a1026b4db4a334ea15eedc2deaa5ac37c7a85ca6d4abf8457a1b332c940"}
+}

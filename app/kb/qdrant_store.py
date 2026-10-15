@@ -150,4 +150,6 @@ def search_points(
 def fetch_points(client: QdrantClient, corpus_id: str, ids: list[str]) -> list:
     if not ids:
         return []
-    return client.retrieve(collection_name=collection_name(corpus_id), ids=ids, with_payload=True)
+    return client.retrieve(
+        collection_name=collection_name(corpus_id), ids=ids, with_payload=True, with_vectors=True
+    )

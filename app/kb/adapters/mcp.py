@@ -11,6 +11,13 @@ from kb.search import run_search
 
 mcp = FastMCP("center-kb")
 
+mcp.settings.streamable_http_path = "/"
+
+
+def build_streamable_app():
+    streamable_app = mcp.streamable_http_app()
+    return streamable_app, mcp._session_manager
+
 
 class MCPTokenMiddleware:
     def __init__(self, app):

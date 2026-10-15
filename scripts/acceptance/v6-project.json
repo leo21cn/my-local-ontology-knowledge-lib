@@ -1,0 +1,5 @@
+{
+  "label": "项目乙",
+  "class_iri": "http://kb.local/o/acc#Project",
+  "anchor": {"rel_path": "note-020.md", "seq": 0, "sha256": "v6-project"}
+}

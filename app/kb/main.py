@@ -15,7 +15,8 @@ from kb.routers import corpora, entities, graph, ontology, search, stats, tasks
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.arq = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
-    yield
+    async with app.state.mcp_manager.run():
+        yield
     await app.state.arq.aclose()
 
 
@@ -33,7 +34,9 @@ def create_app() -> FastAPI:
     for module in (corpora, tasks, search, ontology, entities, graph, stats):
         app.include_router(module.router)
     app.include_router(dify_adapter.router)
-    app.mount("/mcp", mcp_adapter.MCPTokenMiddleware(mcp_adapter.mcp.streamable_http_app()))
+    streamable_app, session_manager = mcp_adapter.build_streamable_app()
+    app.state.mcp_manager = session_manager
+    app.mount("/mcp", mcp_adapter.MCPTokenMiddleware(streamable_app))
     return app
 
 

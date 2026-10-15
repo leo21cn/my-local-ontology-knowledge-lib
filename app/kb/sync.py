@@ -258,7 +258,7 @@ async def run_rebuild(settings: Settings, corpus_id: str, mode: str,
             for asset in scan_assets(root):
                 prepared = _prepare_asset(corpus, asset, root)
                 existing = {
-                    point.id: point
+                    point.id.replace("-", ""): point
                     for point in fetch_points(client, corpus_id, [item["id"] for item in prepared])
                 }
                 points = []

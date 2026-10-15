@@ -45,13 +45,30 @@ async def create_class(corpus_id: str, body: OntClassIn, driver=Depends(get_neo4
     return {"data": _save_and_export(driver, corpus_id, body.model_dump(exclude_none=True), write_ont_class)}
 
 
+def _queue_violations(driver, corpus_id: str, entry: dict, violations: list[dict]) -> int:
+    for violation in violations:
+        create_pending(
+            driver,
+            corpus_id,
+            "violation",
+            {
+                "type_iri": entry["iri"],
+                "from": violation["from"],
+                "to": violation["to"],
+                "reason": violation["reason"],
+            },
+        )
+    return len(violations)
+
+
 @router.post("/object-properties")
 async def create_obj_prop(corpus_id: str, body: OntObjPropIn, driver=Depends(get_neo4j)):
     entry = body.model_dump(exclude_none=True)
     saved = _save_and_export(driver, corpus_id, entry, write_ont_obj_prop)
     ontology = get_ontology(driver, corpus_id)
     violations = find_violations(driver, entry, ontology["classes"])
-    return {"data": {**saved, "violations": violations}}
+    queued = _queue_violations(driver, corpus_id, entry, violations)
+    return {"data": {**saved, "violations": violations, "queued": queued}}
 
 
 @router.post("/datatype-properties")
@@ -95,7 +112,8 @@ async def patch_obj_prop(iri: str, corpus_id: str, body: OntObjPropIn, driver=De
     entry["iri"] = iri
     saved = _save_and_export(driver, corpus_id, entry, write_ont_obj_prop)
     violations = find_violations(driver, entry, get_ontology(driver, corpus_id)["classes"])
-    return {"data": {**saved, "violations": violations}}
+    queued = _queue_violations(driver, corpus_id, entry, violations)
+    return {"data": {**saved, "violations": violations, "queued": queued}}
 
 
 @router.delete("/object-properties/{iri:path}")

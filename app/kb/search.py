@@ -98,6 +98,7 @@ async def run_search(settings: Settings, corpus_id: str, query: str,
         corpus = get_corpus(driver, corpus_id)
         if corpus is None or corpus.get("archived"):
             return []
+        context_root = str(Path(settings.kb_corpus_root) / corpus["subdir"])
         vectors, _ = await embed_texts(settings, [query])
         hits = search_points(client, corpus_id, vectors[0], filters or {}, top_k=top_k)
         class_iri = (filters or {}).get("class_iri")
@@ -112,14 +113,14 @@ async def run_search(settings: Settings, corpus_id: str, query: str,
                 for hit in hits
                 if (hit.payload["asset_rel_path"], hit.payload["seq"]) in matched
             ]
-        vector_ranked = [hit.id for hit in hits]
-        by_id = {hit.id: hit for hit in hits}
+        vector_ranked = [hit.id.replace("-", "") for hit in hits]
+        by_id = {hit.id.replace("-", ""): hit for hit in hits}
         graph_ranked: list[str] = []
         if corpus.get("graph_expand_enabled", True):
             graph_ranked = expand_one_hop(driver, [hit.payload for hit in hits])
             missing = [pid for pid in graph_ranked if pid not in by_id]
             for point in fetch_points(client, corpus_id, missing):
-                by_id[point.id] = point
+                by_id[point.id.replace("-", "")] = point
         graph_weight = float(corpus.get("graph_weight", 1.0))
         fused = rrf_fuse([vector_ranked, graph_ranked], k=60, weights=[1.0, graph_weight])
         ordered = [pid for pid, _ in sorted(fused.items(), key=lambda kv: -kv[1])][:top_k]
@@ -130,7 +131,7 @@ async def run_search(settings: Settings, corpus_id: str, query: str,
             if point is None:
                 continue
             payload = point.payload
-            context = read_context(settings.kb_corpus_root, payload)
+            context = read_context(context_root, payload)
             if context is None:
                 continue
             results.append(
