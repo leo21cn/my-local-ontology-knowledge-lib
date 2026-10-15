@@ -18,9 +18,10 @@
       </el-table-column>
       <el-table-column prop="attempts" label="尝试次数" width="100" />
       <el-table-column prop="status" label="状态" width="90" />
-      <el-table-column label="操作" width="260">
+      <el-table-column label="操作" width="340">
         <template #default="{ row }">
           <el-button v-if="['proposal', 'relation_proposal', 'ontology_proposal'].includes(row.kind)" size="small" type="primary" @click="resolve(row, 'confirm')">确认</el-button>
+          <el-button v-if="row.kind === 'ontology_proposal'" size="small" @click="openEdit(row)">编辑</el-button>
           <el-button size="small" type="danger" @click="resolve(row, 'reject')">拒绝</el-button>
           <el-button v-if="row.kind === 'proposal'" size="small" @click="retypeFor = row; retypeDialog = true">改类型</el-button>
         </template>
@@ -36,6 +37,39 @@
         <el-button type="primary" @click="doRetype">提交</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="editDialog" title="编辑本体提案" width="560px">
+      <el-form label-width="120px">
+        <el-form-item label="要素类型">
+          <el-input :model-value="editForm.element_kind" disabled />
+        </el-form-item>
+        <el-form-item label="本地名（英文）">
+          <el-input v-model="editForm.local_name" />
+          <div class="hint">IRI 预览：{{ iriPreview }}</div>
+        </el-form-item>
+        <el-form-item label="中文标签"><el-input v-model="editForm.label" /></el-form-item>
+        <el-form-item label="定义"><el-input v-model="editForm.definition" type="textarea" :rows="2" /></el-form-item>
+        <el-form-item label="别名">
+          <el-input v-model="editForm.aliases_text" placeholder="逗号分隔，可留空" />
+        </el-form-item>
+        <template v-if="editForm.element_kind === 'object_property'">
+          <el-form-item label="domain 类标签">
+            <el-select v-model="editForm.domain" filterable allow-create placeholder="选择或输入已确认类的标签">
+              <el-option v-for="c in classLabels" :key="c" :label="c" :value="c" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="range 类标签">
+            <el-select v-model="editForm.range" filterable allow-create placeholder="选择或输入已确认类的标签">
+              <el-option v-for="c in classLabels" :key="c" :label="c" :value="c" />
+            </el-select>
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -49,13 +83,36 @@ const kind = ref('proposal')
 const retypeDialog = ref(false)
 const retypeFor = ref(null)
 const retypeIri = ref('')
+const editDialog = ref(false)
+const editFor = ref(null)
+const editForm = ref({})
+const classLabels = ref([])
 
 const grouped = computed(() => items.value.filter((i) => i.kind === kind.value))
+const iriPreview = computed(() => {
+  const p = editForm.value?.iri_preview || 'http://kb.local/o/#'
+  const base = p.slice(0, p.lastIndexOf('#') + 1)
+  return base + (editForm.value?.local_name || '')
+})
 
 onMounted(load)
 
 async function load() {
   items.value = await api.get('/api/v1/pending')
+  const ontologyItems = items.value.filter((i) => i.kind === 'ontology_proposal')
+  if (ontologyItems.length) {
+    const corpusIds = [...new Set(ontologyItems.map((i) => i.corpus_id))]
+    const labels = []
+    for (const cid of corpusIds) {
+      try {
+        const ont = await api.get(`/api/v1/ontology/${cid}`)
+        ont.classes.forEach((c) => labels.push(c.label_zh))
+      } catch (err) {
+        /* corpus may be gone */
+      }
+    }
+    classLabels.value = [...new Set(labels)].filter(Boolean)
+  }
 }
 
 async function resolve(row, action) {
@@ -68,6 +125,44 @@ async function resolve(row, action) {
     } else {
       ElMessage.success(`已${action === 'reject' ? '拒绝' : '处理'}`)
     }
+    await load()
+  } catch (err) {
+    ElMessage.error(err.message)
+  }
+}
+
+function openEdit(row) {
+  editFor.value = row
+  editForm.value = {
+    element_kind: row.payload.element_kind,
+    local_name: row.payload.local_name,
+    label: row.payload.label,
+    definition: row.payload.definition,
+    aliases_text: (row.payload.aliases || []).join(','),
+    domain: row.payload.domain || '',
+    range: row.payload.range || '',
+    iri_preview: row.payload.iri_preview || '',
+  }
+  editDialog.value = true
+}
+
+async function saveEdit() {
+  try {
+    const body = {
+      local_name: editForm.value.local_name,
+      label: editForm.value.label,
+      definition: editForm.value.definition,
+      aliases: editForm.value.aliases_text
+        ? editForm.value.aliases_text.split(',').map((s) => s.trim()).filter(Boolean)
+        : [],
+    }
+    if (editForm.value.element_kind === 'object_property') {
+      body.domain = editForm.value.domain
+      body.range = editForm.value.range
+    }
+    await api.patch(`/api/v1/pending/${editFor.value.pid}`, body)
+    editDialog.value = false
+    ElMessage.success('已保存，可以再次点击确认')
     await load()
   } catch (err) {
     ElMessage.error(err.message)
@@ -88,3 +183,11 @@ async function doRetype() {
   }
 }
 </script>
+
+<style scoped>
+.hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+</style>

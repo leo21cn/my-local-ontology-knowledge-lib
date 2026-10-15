@@ -13,12 +13,13 @@ from kb.neo4j_store import (
 from kb.ontology import check_relation_valid
 from kb.proposals import (
     create_pending,
+    edit_ontology_proposal,
     ensure_entity,
     list_pending,
     resolve_pending,
     split_entity,
 )
-from kb.schemas import EntitiesMerge, EntitiesSplit, EntityIn, PendingResolve, RelationIn
+from kb.schemas import EditPending, EntitiesMerge, EntitiesSplit, EntityIn, PendingResolve, RelationIn
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_token)])
 
@@ -124,4 +125,18 @@ async def read_pending(corpus_id: str | None = None, driver=Depends(get_neo4j)):
 async def resolve(pid: str, body: PendingResolve, driver=Depends(get_neo4j)):
     if body.action not in {"confirm", "reject", "retype"}:
         raise HTTPException(400, detail={"code": "BAD_ACTION", "message": body.action})
-    return {"data": resolve_pending(driver, pid, body.action, body.new_class_iri)}
+    try:
+        return {"data": resolve_pending(driver, pid, body.action, body.new_class_iri)}
+    except KeyError:
+        raise HTTPException(404, detail={"code": "PENDING_NOT_FOUND", "message": pid})
+
+
+@router.patch("/pending/{pid}")
+async def edit(pid: str, body: EditPending, driver=Depends(get_neo4j)):
+    try:
+        result = edit_ontology_proposal(driver, pid, body.model_dump(exclude_none=True))
+    except KeyError:
+        raise HTTPException(404, detail={"code": "PENDING_NOT_FOUND", "message": pid})
+    except ValueError as exc:
+        raise HTTPException(400, detail={"code": "EDIT_REJECTED", "message": str(exc)})
+    return {"data": result}

@@ -102,6 +102,37 @@ def _pending_payload(driver, pid: str) -> dict:
     }
 
 
+def edit_ontology_proposal(driver, pid: str, fields: dict) -> dict:
+    record = _pending_payload(driver, pid)
+    if record["kind"] != "ontology_proposal":
+        raise ValueError("仅本体提案支持编辑")
+    payload = record["payload"]
+    if fields.get("local_name") is not None:
+        payload["local_name"] = fields["local_name"]
+    if fields.get("label") is not None:
+        payload["label"] = fields["label"]
+    if fields.get("definition") is not None:
+        payload["definition"] = fields["definition"]
+    if fields.get("aliases") is not None:
+        payload["aliases"] = fields["aliases"]
+    if payload.get("element_kind") == "object_property":
+        if fields.get("domain") is not None:
+            payload["domain"] = fields["domain"]
+        if fields.get("range") is not None:
+            payload["range"] = fields["range"]
+    if not payload.get("label") or not payload.get("definition"):
+        raise ValueError("label 与 definition 不能为空")
+    ontology = get_ontology(driver, record["corpus_id"])
+    prefix = ontology["base_iri"].rstrip("#").rsplit("/", 1)[-1]
+    payload["iri_preview"] = f"http://kb.local/o/{prefix}#{payload['local_name']}"
+    with driver.session() as session:
+        session.run(
+            "MATCH (p:PendingItem {pid: $pid}) SET p.payload = $payload",
+            pid=pid, payload=json.dumps(payload, ensure_ascii=False),
+        )
+    return {"pid": pid, "payload": payload}
+
+
 def resolve_pending(driver, pid: str, action: str, new_class_iri: str | None = None) -> dict:
     record = _pending_payload(driver, pid)
     payload = record["payload"]
@@ -275,12 +306,24 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
         write_ont_class(driver, corpus_id, entry)
     else:
         classes = ontology["classes"]
-        label_to_iri = {c.get("label_zh"): c["iri"] for c in classes if c.get("label_zh")}
-        domain_iri = label_to_iri.get(payload.get("domain", ""))
-        range_iri = label_to_iri.get(payload.get("range", ""))
+        label_to_iri = {}
+        for c in classes:
+            if c.get("label_zh"):
+                label_to_iri[c["label_zh"]] = c["iri"]
+            for alias in c.get("aliases", []):
+                label_to_iri.setdefault(alias, c["iri"])
+        domain_label = payload.get("domain", "")
+        range_label = payload.get("range", "")
+        domain_iri = label_to_iri.get(domain_label, "")
+        range_iri = label_to_iri.get(range_label, "")
         if not domain_iri or not range_iri:
+            missing = [
+                label for label, iri in ((domain_label, domain_iri), (range_label, range_iri)) if not iri
+            ]
+            available = "、".join(sorted(set(c.get("label_zh", "") for c in classes if c.get("label_zh"))))
             return {"pid": pid, "action": "confirm", "status": "open",
-                    "eid": "", "anchor_count": 0, "error": "DOMAIN_RANGE_UNRESOLVED"}
+                    "eid": "", "anchor_count": 0,
+                    "error": f"DOMAIN_RANGE_UNRESOLVED: 类标签未找到 {missing}（已确认类的标签：{available}），请编辑提案修正 domain/range 后重试"}
         entry = {
             "iri": iri,
             "label_zh": payload["label"],

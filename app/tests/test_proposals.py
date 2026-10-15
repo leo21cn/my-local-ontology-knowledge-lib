@@ -177,3 +177,31 @@ def test_ontology_proposal_confirm_writes_ontology(driver):
             "MATCH (a:Entity {eid: $a})-[r:REL]->(b:Entity) RETURN count(r) AS n", a=""
         ).single()
     assert rels is not None
+
+
+@pytest.mark.integration
+def test_ontology_proposal_edit_then_confirm(driver):
+    from kb.proposals import create_ontology_proposal, edit_ontology_proposal
+
+    write_ont_class(driver, "c-prop", {
+        "iri": "http://kb.local/o/cprop#Person", "label_zh": "人员",
+        "definition": "个体", "parent_iris": [], "disjoint_with": [],
+    })
+    anchor = {"rel_path": "i.md", "seq": 0, "sha256": "s-i"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "object_property",
+        {"local_name": "worksOn", "label": "参与", "definition": "人员参与项目",
+         "domain": "不存在的人", "range": "不存在的项目"},
+        anchor, "cprop",
+    )
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "open"
+    assert result["error"].startswith("DOMAIN_RANGE_UNRESOLVED")
+
+    edited = edit_ontology_proposal(
+        driver, pid, {"domain": "人员", "range": "项目"}
+    )
+    assert edited["payload"]["domain"] == "人员"
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "confirmed"
+    assert result["eid"] == "http://kb.local/o/cprop#worksOn"

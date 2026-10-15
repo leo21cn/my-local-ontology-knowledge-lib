@@ -36,6 +36,15 @@ class ExtractTrigger(BaseModel):
     file_path: str | None = None
 
 
+class EditPending(BaseModel):
+    local_name: str | None = None
+    label: str | None = None
+    definition: str | None = None
+    aliases: list[str] | None = None
+    domain: str | None = None
+    range: str | None = None
+
+
 class SearchFilters(BaseModel):
     tags: list[str] = Field(default_factory=list)
     time_from: float | None = None
