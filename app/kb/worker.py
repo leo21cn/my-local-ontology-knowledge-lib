@@ -13,11 +13,15 @@ def poll_minutes(interval: int) -> set[int]:
 
 async def run_sync_job(ctx, corpus_id: str, scope: str = "all",
                        file_path: str | None = None) -> str:
-    return await sync_module.run_sync(get_settings(), corpus_id, scope, file_path)
+    return await sync_module.run_sync(
+        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+    )
 
 
 async def rebuild_job(ctx, corpus_id: str, mode: str) -> str:
-    return await sync_module.run_rebuild(get_settings(), corpus_id, mode)
+    return await sync_module.run_rebuild(
+        get_settings(), corpus_id, mode, task_id=ctx.get("job_id")
+    )
 
 
 async def poll_all(ctx) -> None:

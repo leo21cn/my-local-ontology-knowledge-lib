@@ -1,0 +1,7 @@
+{
+  "iri": "http://kb.local/o/acc#Project",
+  "prefix_local": "Project",
+  "label_zh": "项目",
+  "definition": "一个交付单元",
+  "aliases": ["验收项目组"]
+}

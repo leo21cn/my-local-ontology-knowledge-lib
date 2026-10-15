@@ -213,8 +213,8 @@ async def _sync_assets(settings, driver, client, corpus, task_id, targets) -> No
 
 
 async def run_sync(settings: Settings, corpus_id: str, scope: str = "all",
-                   file_path: str | None = None) -> str:
-    task_id = uuid4().hex
+                   file_path: str | None = None, task_id: str | None = None) -> str:
+    task_id = task_id or uuid4().hex
     driver = get_driver(settings)
     client = qdrant_client(settings)
     try:
@@ -235,8 +235,9 @@ async def run_sync(settings: Settings, corpus_id: str, scope: str = "all",
     return task_id
 
 
-async def run_rebuild(settings: Settings, corpus_id: str, mode: str) -> str:
-    task_id = uuid4().hex
+async def run_rebuild(settings: Settings, corpus_id: str, mode: str,
+                      task_id: str | None = None) -> str:
+    task_id = task_id or uuid4().hex
     driver = get_driver(settings)
     client = qdrant_client(settings)
     try:
