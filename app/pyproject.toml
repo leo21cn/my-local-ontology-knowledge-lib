@@ -1,0 +1,32 @@
+[project]
+name = "center-kb"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "httpx>=0.27",
+  "openai>=1.40,<2",
+  "qdrant-client>=1.11",
+  "neo4j>=5.24",
+  "rdflib>=7.0",
+  "python-frontmatter>=1.1",
+  "arq>=0.26",
+  "mcp>=1.2,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "respx>=0.21"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["kb", "kb.routers", "kb.adapters"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["integration: 需要本机容器与真实密钥"]
