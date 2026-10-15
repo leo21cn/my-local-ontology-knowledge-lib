@@ -286,15 +286,39 @@ def _confirm_relation_proposal(driver, corpus_id: str, pid: str, payload: dict) 
 
 def create_ontology_proposal(driver, corpus_id: str, element_kind: str, entry: dict,
                              anchor: dict, prefix: str) -> str:
+    iri = f"http://kb.local/o/{prefix}#{entry['local_name']}"
+    label = entry.get("label", "")
+    with driver.session() as session:
+        duplicate_open = session.run(
+            """
+            MATCH (p:PendingItem {corpus_id: $corpus_id, kind: 'ontology_proposal', status: 'open'})
+            WHERE p.payload CONTAINS $iri_fragment
+            RETURN p.pid AS pid LIMIT 1
+            """,
+            corpus_id=corpus_id,
+            iri_fragment=f'"iri_preview": "{iri}"',
+        ).single()
+        if duplicate_open:
+            return ""
+        if element_kind == "class":
+            existing = session.run(
+                "MATCH (c:OntClass {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri
+            ).single()
+        else:
+            existing = session.run(
+                "MATCH (c:OntObjProp {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri
+            ).single()
+        if existing and existing["l"] == label:
+            return ""
     return create_pending(driver, corpus_id, "ontology_proposal", {
         "element_kind": element_kind,
         "local_name": entry["local_name"],
-        "label": entry["label"],
+        "label": label,
         "definition": entry["definition"],
         "aliases": entry.get("aliases", []),
         "domain": entry.get("domain", ""),
         "range": entry.get("range", ""),
-        "iri_preview": f"http://kb.local/o/{prefix}#{entry['local_name']}",
+        "iri_preview": iri,
         "anchor": anchor,
     })
 
@@ -307,8 +331,36 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
         p["iri"] for p in ontology["object_properties"]
     }
     if iri in existing_iris:
+        same_kind = (
+            (payload["element_kind"] == "class" and any(c["iri"] == iri for c in ontology["classes"]))
+            or (payload["element_kind"] == "object_property" and any(p["iri"] == iri for p in ontology["object_properties"]))
+        )
+        existing_label = ""
+        existing_kind = "类"
+        if payload["element_kind"] == "class":
+            match = [c for c in ontology["classes"] if c["iri"] == iri]
+            if match:
+                existing_label = match[0].get("label_zh", "")
+        else:
+            existing_kind = "对象属性"
+            match = [p for p in ontology["object_properties"] if p["iri"] == iri]
+            if match:
+                existing_label = match[0].get("label_zh", "")
+        is_duplicate = same_kind and (
+            existing_label == payload["label"]
+            or payload["label"] in [a for c in ontology["classes"] for a in c.get("aliases", []) if c["iri"] == iri]
+        )
+        if is_duplicate:
+            with driver.session() as session:
+                session.run(
+                    "MATCH (p:PendingItem {pid: $pid}) SET p.status = 'rejected'", pid=pid
+                )
+            return {"pid": pid, "action": "confirm", "status": "rejected",
+                    "eid": "", "anchor_count": 0,
+                    "error": f"DUPLICATE: IRI {iri} 已存在且标签一致（{existing_label}），本条提案为重复内容，已自动关闭"}
         return {"pid": pid, "action": "confirm", "status": "open",
-                "eid": "", "anchor_count": 0, "error": "IRI_CONFLICT"}
+                "eid": "", "anchor_count": 0,
+                "error": f"IRI_CONFLICT: IRI {iri} 已被{existing_kind}「{existing_label or iri}」占用，请编辑本地名后重试"}
     if payload["element_kind"] == "class":
         entry = {
             "iri": iri,

@@ -205,3 +205,57 @@ def test_ontology_proposal_edit_then_confirm(driver):
     result = resolve_pending(driver, pid, "confirm")
     assert result["status"] == "confirmed"
     assert result["eid"] == "http://kb.local/o/cprop#worksOn"
+
+
+@pytest.mark.integration
+def test_ontology_proposal_generation_skips_confirmed_duplicate(driver):
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "j.md", "seq": 0, "sha256": "s-j"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Project", "label": "项目", "definition": "交付单元", "aliases": []},
+        anchor, "cprop",
+    )
+    assert pid == ""
+    assert not any(
+        i["payload"].get("iri_preview") == "http://kb.local/o/cprop#Project"
+        for i in list_pending(driver, "c-prop")
+    )
+
+
+@pytest.mark.integration
+def test_ontology_proposal_duplicate_auto_closed(driver):
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "j.md", "seq": 0, "sha256": "s-j"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Thing", "label": "事物", "definition": "被描述的对象", "aliases": []},
+        anchor, "cprop",
+    )
+    assert pid
+    write_ont_class(driver, "c-prop", {
+        "iri": "http://kb.local/o/cprop#Thing", "label_zh": "事物",
+        "definition": "被描述的对象", "parent_iris": [], "disjoint_with": [],
+    })
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "rejected"
+    assert result["error"].startswith("DUPLICATE")
+
+
+@pytest.mark.integration
+def test_ontology_proposal_conflict_keeps_open(driver):
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "k.md", "seq": 0, "sha256": "s-k"}
+    pid = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Project", "label": "别的名称", "definition": "别的定义", "aliases": []},
+        anchor, "cprop",
+    )
+    assert pid
+    result = resolve_pending(driver, pid, "confirm")
+    assert result["status"] == "open"
+    assert result["error"].startswith("IRI_CONFLICT")
+    assert "项目" in result["error"]
