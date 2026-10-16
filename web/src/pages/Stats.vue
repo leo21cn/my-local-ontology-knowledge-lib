@@ -1,13 +1,11 @@
 <template>
   <el-row :gutter="12">
-    <el-col :span="3"><el-card><div class="label">任务数</div><div class="value">{{ stats.tasks ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">累计令牌</div><div class="value">{{ stats.tokens ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">嵌入重试次数</div><div class="value">{{ stats.retries ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">嵌入费用估算</div><div class="value">{{ stats.cost ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">抽取调用数</div><div class="value">{{ stats.extract_calls ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">抽取费用估算</div><div class="value">{{ stats.extract_cost ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">失败任务数</div><div class="value">{{ stats.failed ?? 0 }}</div></el-card></el-col>
-    <el-col :span="3"><el-card><div class="label">待处理积压</div><div class="value">{{ stats.pending ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">任务数</div><div class="value">{{ stats.tasks ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">累计令牌</div><div class="value">{{ stats.tokens ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">嵌入重试次数</div><div class="value">{{ stats.retries ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">抽取调用数</div><div class="value">{{ stats.extract_calls ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">失败任务数</div><div class="value">{{ stats.failed ?? 0 }}</div></el-card></el-col>
+    <el-col :span="4"><el-card><div class="label">待处理积压</div><div class="value">{{ stats.pending ?? 0 }}</div></el-card></el-col>
   </el-row>
 </template>
 
