@@ -1,56 +1,67 @@
 <template>
   <div>
-    <el-button type="primary" style="margin-bottom: 12px" @click="showClass = true">新建类</el-button>
-    <el-button style="margin-bottom: 12px" @click="showObjProp = true">新建对象属性</el-button>
-    <el-button style="margin-bottom: 12px" @click="showDataProp = true">新建数据属性</el-button>
     <el-button style="margin-bottom: 12px" @click="exportTtl">导出 TTL</el-button>
 
-    <el-card header="类">
-      <el-table :data="ontology.classes" border>
-        <el-table-column prop="label_zh" label="名称" />
-        <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
-        <el-table-column label="父类">
-          <template #default="{ row }">
-            <el-tag v-for="p in row.parent_iris" :key="p" size="small" style="margin-right: 4px">{{ p.split('#').pop() }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button size="small" @click="editClass(row)">修改</el-button>
-            <el-button size="small" type="danger" @click="removeClass(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <el-tabs v-model="activeTab">
+      <el-tab-pane label="类" name="classes">
+        <div style="margin-bottom: 10px; display: flex; gap: 8px">
+          <el-button type="primary" @click="showClass = true">新建类</el-button>
+          <el-input v-model="classQuery" placeholder="按中文标签或本地名筛选" clearable style="width: 300px" />
+        </div>
+        <el-table :data="filteredClasses" border>
+          <el-table-column prop="label_zh" label="名称" />
+          <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
+          <el-table-column label="父类">
+            <template #default="{ row }">
+              <el-tag v-for="p in row.parent_iris" :key="p" size="small" style="margin-right: 4px">{{ p.split('#').pop() }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button size="small" @click="editClass(row)">修改</el-button>
+              <el-button size="small" type="danger" @click="removeClass(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
 
-    <el-card header="对象属性" style="margin-top: 12px">
-      <el-table :data="ontology.object_properties" border>
-        <el-table-column prop="label_zh" label="名称" />
-        <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
-        <el-table-column label="domain" prop="domain_iri" show-overflow-tooltip />
-        <el-table-column label="range" prop="range_iri" show-overflow-tooltip />
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button size="small" @click="editObjProp(row)">修改</el-button>
-            <el-button size="small" type="danger" @click="removeObjProp(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <el-tab-pane label="对象属性" name="object_properties">
+        <div style="margin-bottom: 10px; display: flex; gap: 8px">
+          <el-button type="primary" @click="showObjProp = true">新建对象属性</el-button>
+          <el-input v-model="objQuery" placeholder="按中文标签或本地名筛选" clearable style="width: 300px" />
+        </div>
+        <el-table :data="filteredObjProps" border>
+          <el-table-column prop="label_zh" label="名称" />
+          <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
+          <el-table-column label="domain" prop="domain_iri" show-overflow-tooltip />
+          <el-table-column label="range" prop="range_iri" show-overflow-tooltip />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button size="small" @click="editObjProp(row)">修改</el-button>
+              <el-button size="small" type="danger" @click="removeObjProp(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
 
-    <el-card header="数据属性" style="margin-top: 12px">
-      <el-table :data="ontology.datatype_properties" border>
-        <el-table-column prop="label_zh" label="名称" />
-        <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
-        <el-table-column prop="xsd_range" label="XSD 类型" show-overflow-tooltip />
-        <el-table-column label="操作" width="160">
-          <template #default="{ row }">
-            <el-button size="small" @click="editDataProp(row)">修改</el-button>
-            <el-button size="small" type="danger" @click="removeDataProp(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <el-tab-pane label="数据属性" name="datatype_properties">
+        <div style="margin-bottom: 10px; display: flex; gap: 8px">
+          <el-button type="primary" @click="showDataProp = true">新建数据属性</el-button>
+          <el-input v-model="dataQuery" placeholder="按中文标签或本地名筛选" clearable style="width: 300px" />
+        </div>
+        <el-table :data="filteredDataProps" border>
+          <el-table-column prop="label_zh" label="名称" />
+          <el-table-column prop="iri" label="IRI" show-overflow-tooltip />
+          <el-table-column prop="xsd_range" label="XSD 类型" show-overflow-tooltip />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <el-button size="small" @click="editDataProp(row)">修改</el-button>
+              <el-button size="small" type="danger" @click="removeDataProp(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="showClass" :title="classForm.iri && editing ? '修改类' : '新建类'" width="560px">
       <el-form :model="classForm" label-width="120px">
@@ -100,7 +111,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
@@ -108,12 +119,29 @@ import { api } from '../api'
 const route = useRoute()
 const id = route.params.id
 const ontology = ref({ classes: [], object_properties: [], datatype_properties: [] })
+const activeTab = ref('classes')
+const classQuery = ref('')
+const objQuery = ref('')
+const dataQuery = ref('')
 const showClass = ref(false)
 const showObjProp = ref(false)
 const showDataProp = ref(false)
 const editing = ref(false)
 const parentText = ref('')
 const aliasText = ref('')
+
+function matches(row, query) {
+  if (!query) return true
+  const needle = query.trim().toLowerCase()
+  return (
+    (row.label_zh || '').toLowerCase().includes(needle) ||
+    (row.iri || '').split('#').pop().toLowerCase().includes(needle)
+  )
+}
+
+const filteredClasses = computed(() => ontology.value.classes.filter((r) => matches(r, classQuery.value)))
+const filteredObjProps = computed(() => ontology.value.object_properties.filter((r) => matches(r, objQuery.value)))
+const filteredDataProps = computed(() => ontology.value.datatype_properties.filter((r) => matches(r, dataQuery.value)))
 
 const classForm = reactive({ iri: '', prefix_local: '', label_zh: '', definition: '' })
 const objPropForm = reactive({ iri: '', prefix_local: '', label_zh: '', definition: '', domain_iri: '', range_iri: '' })
