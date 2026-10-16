@@ -22,14 +22,18 @@
           >{{ row.archived ? '已归档' : '未归档' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="410">
+      <el-table-column label="操作" width="300">
         <template #default="{ row }">
-          <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}`)">详情</el-button>
-          <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}/llm`)">LLM辅助建模</el-button>
-          <el-button size="small" @click="$router.push(`/ontology/${row.corpus_id}`)">本体</el-button>
-          <el-button size="small" @click="$router.push(`/entities/${row.corpus_id}`)">实体</el-button>
-          <el-button size="small" @click="$router.push(`/graph/${row.corpus_id}`)">图谱</el-button>
-          <el-button size="small" @click="$router.push(`/stats/${row.corpus_id}`)">统计</el-button>
+          <div style="margin-bottom: 4px">
+            <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}`)">详情</el-button>
+            <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}/llm`)">LLM辅助建模</el-button>
+            <el-button size="small" @click="$router.push(`/ontology/${row.corpus_id}`)">本体</el-button>
+          </div>
+          <div>
+            <el-button size="small" @click="$router.push(`/entities/${row.corpus_id}`)">实体</el-button>
+            <el-button size="small" @click="$router.push(`/graph/${row.corpus_id}`)">图谱</el-button>
+            <el-button size="small" @click="$router.push(`/stats/${row.corpus_id}`)">统计</el-button>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="删除" width="90">
