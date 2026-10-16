@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from kb.auth import require_token
@@ -14,11 +14,13 @@ from kb.neo4j_store import (
     write_ont_data_prop,
     write_ont_obj_prop,
 )
-from kb.ontology import export_ttl, find_violations, validate_rl
+from kb.ontology import export_ttl, find_violations, parse_ttl, validate_rl
 from kb.proposals import create_pending
 from kb.schemas import OntClassIn, OntDataPropIn, OntObjPropIn
 
 router = APIRouter(prefix="/api/v1/ontology", dependencies=[Depends(require_token)])
+
+MAX_TTL_BYTES = 1024 * 1024
 
 
 def _reject(violations: list[str]) -> None:
@@ -161,3 +163,60 @@ async def remove_data_prop(iri: str, corpus_id: str, driver=Depends(get_neo4j)):
 async def download_ttl(corpus_id: str):
     path = f"{get_settings().kb_ontology_export_dir}/{corpus_id}.ttl"
     return FileResponse(path, media_type="text/turtle", filename=f"{corpus_id}.ttl")
+
+
+@router.post("/import")
+async def import_ttl(corpus_id: str, file: UploadFile = File(...), driver=Depends(get_neo4j)):
+    content = await file.read()
+    if len(content) > MAX_TTL_BYTES:
+        raise HTTPException(400, detail={"code": "FILE_TOO_LARGE",
+                                         "message": "TTL 文件超过 1MB"})
+    try:
+        parsed = parse_ttl(content.decode("utf-8"))
+    except UnicodeDecodeError:
+        raise HTTPException(400, detail={"code": "NOT_UTF8", "message": "文件须为 UTF-8 编码"})
+    except ValueError as exc:
+        raise HTTPException(400, detail={"code": "TTL_PARSE_ERROR", "message": str(exc)})
+
+    ontology = get_ontology(driver, corpus_id)
+    existing = {
+        "classes": {c["iri"] for c in ontology["classes"]},
+        "object_properties": {p["iri"] for p in ontology["object_properties"]},
+        "datatype_properties": {p["iri"] for p in ontology["datatype_properties"]},
+    }
+    writers = {
+        "classes": write_ont_class,
+        "object_properties": write_ont_obj_prop,
+        "datatype_properties": write_ont_data_prop,
+    }
+    created = 0
+    updated = 0
+    imported_obj_props: list[dict] = []
+    for kind in ("classes", "object_properties", "datatype_properties"):
+        for entry in parsed[kind]:
+            violations = validate_rl(entry)
+            if violations:
+                parsed["skipped"].append({"iri": entry["iri"], "reason": "; ".join(violations)})
+                continue
+            if entry["iri"] in existing[kind]:
+                updated += 1
+            else:
+                created += 1
+            writers[kind](driver, corpus_id, entry)
+            if kind == "object_properties":
+                imported_obj_props.append(entry)
+
+    final_ontology = get_ontology(driver, corpus_id)
+    queued = 0
+    for entry in imported_obj_props:
+        violations = find_violations(driver, entry, final_ontology["classes"])
+        queued += _queue_violations(driver, corpus_id, entry, violations)
+
+    seq = new_ont_version(driver, corpus_id)
+    export_ttl(
+        final_ontology,
+        f"{get_settings().kb_ontology_export_dir}/{corpus_id}.ttl",
+    )
+    return {"data": {"created": created, "updated": updated,
+                     "skipped": parsed["skipped"], "queued": queued,
+                     "ont_version": seq}}

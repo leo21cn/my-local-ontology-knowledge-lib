@@ -30,5 +30,6 @@ export const api = {
   post: (path, payload) => call(path, { method: 'POST', body: JSON.stringify(payload) }),
   patch: (path, payload) => call(path, { method: 'PATCH', body: JSON.stringify(payload) }),
   del: (path) => call(path, { method: 'DELETE' }),
+  upload: (path, formData) => call(path, { method: 'POST', body: formData, headers: { 'Content-Type': undefined } }),
   raw: (path) => call(path).then(() => fetch(path, { headers: { Authorization: `Bearer ${token()}` } }))
 }

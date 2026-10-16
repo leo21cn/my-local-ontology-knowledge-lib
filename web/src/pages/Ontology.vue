@@ -1,6 +1,7 @@
 <template>
   <div>
     <el-button style="margin-bottom: 12px" @click="exportTtl">导出 TTL</el-button>
+    <el-button style="margin-bottom: 12px" @click="importDialog = true">导入 TTL</el-button>
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="类" name="classes">
@@ -63,6 +64,35 @@
       </el-tab-pane>
     </el-tabs>
 
+    <el-dialog v-model="importDialog" title="导入 TTL" width="640px">
+      <el-upload
+        drag
+        :auto-upload="false"
+        :limit="1"
+        accept=".ttl"
+        :on-change="onFileChange"
+        :on-remove="() => (importFile = null)"
+      >
+        <div style="padding: 20px">将 .ttl 文件拖到此处，或<em>点击选择</em>（Turtle 格式，UTF-8）</div>
+      </el-upload>
+      <div v-if="importResult" style="margin-top: 10px">
+        <el-alert
+          type="success"
+          :closable="false"
+          :title="`导入完成：新建 ${importResult.created}，更新 ${importResult.updated}，跳过 ${(importResult.skipped || []).length}，入队违规 ${importResult.queued}`"
+        />
+        <div v-if="(importResult.skipped || []).length" style="margin-top: 8px; max-height: 180px; overflow: auto">
+          <div v-for="s in importResult.skipped" :key="s.iri" style="font-size: 12px; color: #e6a23c">
+            {{ s.iri }}：{{ s.reason }}
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="importDialog = false">关闭</el-button>
+        <el-button type="primary" :loading="importing" @click="doImport">导入</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="showClass" :title="classForm.iri && editing ? '修改类' : '新建类'" width="560px">
       <el-form :model="classForm" label-width="120px">
         <el-form-item label="IRI"><el-input v-model="classForm.iri" :disabled="editing" /></el-form-item>
@@ -123,6 +153,10 @@ const activeTab = ref('classes')
 const classQuery = ref('')
 const objQuery = ref('')
 const dataQuery = ref('')
+const importDialog = ref(false)
+const importFile = ref(null)
+const importResult = ref(null)
+const importing = ref(false)
 const showClass = ref(false)
 const showObjProp = ref(false)
 const showDataProp = ref(false)
@@ -271,5 +305,29 @@ async function exportTtl() {
   link.download = `${id}.ttl`
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function onFileChange(file) {
+  importFile.value = file.raw
+  importResult.value = null
+}
+
+async function doImport() {
+  if (!importFile.value) {
+    ElMessage.error('请先选择 TTL 文件')
+    return
+  }
+  importing.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile.value)
+    importResult.value = await api.upload(`/api/v1/ontology/import?corpus_id=${id}`, formData)
+    ElMessage.success('导入完成')
+    await load()
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    importing.value = false
+  }
 }
 </script>

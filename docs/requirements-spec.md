@@ -76,7 +76,7 @@
 
 ### FR-06 本体注册表
 
-- 输入：类、对象属性、数据属性、公理的增删改查（字段见 5.3 节）、从本体提案确认（FR-14 阶段一）。
+- 输入：类、对象属性、数据属性、公理的增删改查（字段见 5.3 节）、从本体提案确认（FR-14 阶段一）、TTL 文件导入（Turtle 解析，upsert 语义，违规条目跳过并报告）。
 - 处理规则：见 6.2 节本体编辑与标准物化。保存时执行 OWL 2 RL 子集校验（见 NFR-01 附则），同时更新库内定义与 TTL 导出物，二者同事务；生成新 OntVersion 序号。
 - 输出：保存结果、违规构造拒绝原因、受影响的实例违规清单（转待处理队列）。
 - 关联验收：V5、V6、V11。
@@ -168,6 +168,7 @@
 | GET/POST | /ontology/datatype-properties | 数据属性列表 / 新建 | — |
 | GET/PATCH/DELETE | /ontology/datatype-properties/{iri} | 数据属性读写 / 删除 | — |
 | GET | /ontology/export/{corpus_id} | 下载 TTL | `application/text` |
+| POST | /ontology/import?corpus_id= | 上传 TTL 导入本体 | multipart 文件（Turtle，≤1MB）；upsert 语义，返回 `created/updated/skipped/queued` |
 | GET/POST | /entities | 实体列表 / 新建 | 见 FR-08 |
 | POST | /entities/merge | 合并实体 | `keep`, `drop` |
 | POST | /entities/split | 拆分实体 | `eid`, `new_label`, `class_iri?`, `anchors[]` |

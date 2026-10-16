@@ -92,6 +92,101 @@ RETURN a.eid AS a, a.class_iri AS ac, b.eid AS b, b.class_iri AS bc
 """
 
 
+def _label_of(graph: Graph, subject: URIRef) -> str:
+    for obj in graph.objects(subject, RDFS.label):
+        text = str(obj)
+        if text:
+            if isinstance(obj, Literal) and obj.language == "zh":
+                return text
+    for obj in graph.objects(subject, RDFS.label):
+        if str(obj):
+            return str(obj)
+    return ""
+
+
+def _comment_of(graph: Graph, subject: URIRef) -> str:
+    for obj in graph.objects(subject, RDFS.comment):
+        if str(obj):
+            return str(obj)
+    return ""
+
+
+def parse_ttl(text: str) -> dict:
+    graph = Graph()
+    try:
+        graph.parse(data=text, format="turtle")
+    except Exception as exc:
+        raise ValueError(f"TTL 解析失败: {exc}") from exc
+
+    classes: list[dict] = []
+    object_properties: list[dict] = []
+    datatype_properties: list[dict] = []
+    skipped: list[dict] = []
+
+    def http_iri(subject) -> str | None:
+        if not isinstance(subject, URIRef):
+            return None
+        value = str(subject)
+        return value if value.startswith("http") else None
+
+    for subject in graph.subjects(RDF.type, OWL.Class):
+        iri = http_iri(subject)
+        if not iri:
+            skipped.append({"iri": str(subject), "reason": "非 http IRI"})
+            continue
+        entry = {
+            "iri": iri,
+            "label_zh": _label_of(graph, subject),
+            "definition": _comment_of(graph, subject),
+            "parent_iris": [str(o) for o in graph.objects(subject, RDFS.subClassOf)],
+            "disjoint_with": [str(o) for o in graph.objects(subject, OWL.disjointWith)],
+            "aliases": [],
+        }
+        equivalent = [str(o) for o in graph.objects(subject, OWL.equivalentClass)]
+        if equivalent:
+            entry["equivalent_to"] = equivalent[0]
+        classes.append(entry)
+
+    for subject in graph.subjects(RDF.type, OWL.ObjectProperty):
+        iri = http_iri(subject)
+        if not iri:
+            skipped.append({"iri": str(subject), "reason": "非 http IRI"})
+            continue
+        entry = {
+            "iri": iri,
+            "label_zh": _label_of(graph, subject),
+            "definition": _comment_of(graph, subject),
+            "domain_iri": next((str(o) for o in graph.objects(subject, RDFS.domain)), ""),
+            "range_iri": next((str(o) for o in graph.objects(subject, RDFS.range)), ""),
+            "characteristics": [],
+        }
+        for characteristic, predicate in CHARACTERISTIC_PREDICATES.items():
+            if (subject, RDF.type, predicate) in graph:
+                entry["characteristics"].append(characteristic)
+        object_properties.append(entry)
+
+    for subject in graph.subjects(RDF.type, OWL.DatatypeProperty):
+        iri = http_iri(subject)
+        if not iri:
+            skipped.append({"iri": str(subject), "reason": "非 http IRI"})
+            continue
+        entry = {
+            "iri": iri,
+            "label_zh": _label_of(graph, subject),
+            "definition": _comment_of(graph, subject),
+            "domain_iri": next((str(o) for o in graph.objects(subject, RDFS.domain)), ""),
+            "xsd_range": next((str(o) for o in graph.objects(subject, RDFS.range)), ""),
+        }
+        datatype_properties.append(entry)
+
+    return {
+        "classes": classes,
+        "object_properties": object_properties,
+        "datatype_properties": datatype_properties,
+        "skipped": skipped,
+    }
+
+
 def find_violations(driver, obj_prop: dict, classes: list[dict]) -> list[dict]:
     closure = subclass_closure(classes)
     domain = obj_prop.get("domain_iri")

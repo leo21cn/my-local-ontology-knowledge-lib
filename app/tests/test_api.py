@@ -208,3 +208,66 @@ def test_ontology_patch_class_updates_ttl(host_env):
 
 def test_token_required(host_env):
     assert TestClient(create_app()).get("/api/v1/corpora").status_code == 401
+
+
+@pytest.mark.integration
+def test_ttl_import_upsert_and_skip(host_env):
+    client = TestClient(create_app())
+    corpus_id = create_corpus(client, "导入库", "acc", "imp")
+
+    ttl = """
+@prefix kb: <http://kb.local/o/imp#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+kb:Project a owl:Class ;
+    rdfs:label "项目"@zh ;
+    rdfs:comment "一个交付单元" .
+
+kb:Person a owl:Class ;
+    rdfs:label "人员"@zh ;
+    rdfs:comment "个体" .
+
+kb:memberOf a owl:ObjectProperty ;
+    rdfs:label "参与"@zh ;
+    rdfs:comment "人员参与项目" ;
+    rdfs:domain kb:Person ;
+    rdfs:range kb:Project .
+"""
+    resp = client.post(
+        f"/api/v1/ontology/import?corpus_id={corpus_id}",
+        headers=HEADERS,
+        files={"file": ("c.ttl", ttl.encode("utf-8"), "text/turtle")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["created"] == 3
+    assert data["updated"] == 0
+
+    resp = client.post(
+        f"/api/v1/ontology/import?corpus_id={corpus_id}",
+        headers=HEADERS,
+        files={"file": ("c.ttl", ttl.encode("utf-8"), "text/turtle")},
+    )
+    data = resp.json()["data"]
+    assert data["created"] == 0
+    assert data["updated"] == 3
+    ontology = client.get(f"/api/v1/ontology/{corpus_id}", headers=HEADERS).json()["data"]
+    assert len(ontology["classes"]) == 2
+    assert len(ontology["object_properties"]) == 1
+
+    bad_ttl = """
+@prefix kb: <http://kb.local/o/imp#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+kb:NoLabel a owl:Class ; rdfs:comment "没有标签" .
+"""
+    resp = client.post(
+        f"/api/v1/ontology/import?corpus_id={corpus_id}",
+        headers=HEADERS,
+        files={"file": ("bad.ttl", bad_ttl.encode("utf-8"), "text/turtle")},
+    )
+    data = resp.json()["data"]
+    assert data["created"] == 0
+    assert any(s["iri"].endswith("#NoLabel") for s in data["skipped"])

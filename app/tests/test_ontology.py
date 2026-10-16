@@ -2,7 +2,14 @@ from pathlib import Path
 
 from rdflib import Graph
 
-from kb.ontology import check_relation_valid, export_ttl, find_violations, subclass_closure, validate_rl
+from kb.ontology import (
+    check_relation_valid,
+    export_ttl,
+    find_violations,
+    parse_ttl,
+    subclass_closure,
+    validate_rl,
+)
 
 CLASS_A = {
     "iri": "http://kb.local/o/c1#Project",
@@ -11,6 +18,56 @@ CLASS_A = {
     "parent_iris": [],
     "disjoint_with": [],
 }
+
+
+def test_parse_ttl_roundtrip(tmp_path):
+    ontology = {
+        "base_iri": "http://kb.local/o/c1#",
+        "classes": [
+            dict(CLASS_A, aliases=["项目组"]),
+            {
+                "iri": "http://kb.local/o/c1#Person", "label_zh": "人员",
+                "definition": "个体", "parent_iris": [], "disjoint_with": [],
+            },
+        ],
+        "object_properties": [
+            {
+                "iri": "http://kb.local/o/c1#memberOf", "label_zh": "参与",
+                "definition": "人员参与项目",
+                "domain_iri": "http://kb.local/o/c1#Person",
+                "range_iri": "http://kb.local/o/c1#Project",
+                "characteristics": [],
+            }
+        ],
+        "datatype_properties": [
+            {
+                "iri": "http://kb.local/o/c1#dueDate", "label_zh": "截止日期",
+                "definition": "项目截止日期", "domain_iri": "http://kb.local/o/c1#Project",
+                "xsd_range": "http://www.w3.org/2001/XMLSchema#date",
+            }
+        ],
+    }
+    path = tmp_path / "c1.ttl"
+    export_ttl(ontology, str(path))
+    parsed = parse_ttl(path.read_text(encoding="utf-8"))
+    assert len(parsed["classes"]) == 2
+    assert len(parsed["object_properties"]) == 1
+    assert len(parsed["datatype_properties"]) == 1
+    project = next(c for c in parsed["classes"] if c["iri"] == CLASS_A["iri"])
+    assert project["label_zh"] == "项目"
+    assert project["definition"] == "一个交付单元"
+    member = parsed["object_properties"][0]
+    assert member["domain_iri"] == "http://kb.local/o/c1#Person"
+    due = parsed["datatype_properties"][0]
+    assert due["xsd_range"] == "http://www.w3.org/2001/XMLSchema#date"
+
+
+def test_parse_ttl_rejects_bad_turtle():
+    try:
+        parse_ttl("not a turtle")
+        assert False, "应抛 ValueError"
+    except ValueError:
+        pass
 
 
 def test_validate_rl_passes_on_complete_entry():
