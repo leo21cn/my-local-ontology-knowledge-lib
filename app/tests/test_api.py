@@ -8,9 +8,36 @@ from kb.main import create_app
 
 HEADERS = {"Authorization": "Bearer test-token"}
 
+CREATED_CORPUS_IDS: list[str] = []
+
 
 def uniq(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:6]}"
+
+
+def create_corpus(client: TestClient, name: str, subdir: str, prefix: str,
+                  dim: int = 4) -> str:
+    resp = client.post("/api/v1/corpora", headers=HEADERS, json={
+        "name": name, "subdir": subdir, "ontology_prefix": prefix, "vector_dim": dim,
+    })
+    assert resp.status_code == 200
+    corpus_id = resp.json()["data"]["corpus_id"]
+    CREATED_CORPUS_IDS.append(corpus_id)
+    return corpus_id
+
+
+@pytest.fixture(autouse=True)
+def cleanup_created_corpora():
+    yield
+    if CREATED_CORPUS_IDS:
+        client = TestClient(create_app())
+        for corpus_id in list(CREATED_CORPUS_IDS):
+            try:
+                client.delete(f"/api/v1/corpora/{corpus_id}", headers=HEADERS)
+            except Exception:
+                pass
+            CREATED_CORPUS_IDS.remove(corpus_id)
+        get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -57,9 +84,7 @@ def test_create_corpus_rejects_missing_subdir(host_env):
 @pytest.mark.integration
 def test_ontology_rejects_relative_iri(host_env):
     client = TestClient(create_app())
-    corpus_id = client.post("/api/v1/corpora", headers=HEADERS, json={
-        "name": "本体库", "subdir": "acc", "ontology_prefix": "ont", "vector_dim": 4,
-    }).json()["data"]["corpus_id"]
+    corpus_id = create_corpus(client, "本体库", "acc", "ont")
 
     bad = client.post(
         f"/api/v1/ontology/classes?corpus_id={corpus_id}", headers=HEADERS,
@@ -81,9 +106,7 @@ def test_ontology_rejects_relative_iri(host_env):
 @pytest.mark.integration
 def test_entity_split_moves_anchors(host_env):
     client = TestClient(create_app())
-    corpus_id = client.post("/api/v1/corpora", headers=HEADERS, json={
-        "name": "拆分库", "subdir": "acc", "ontology_prefix": "spl", "vector_dim": 4,
-    }).json()["data"]["corpus_id"]
+    corpus_id = create_corpus(client, "拆分库", "acc", "spl")
     client.post(f"/api/v1/ontology/classes?corpus_id={corpus_id}", headers=HEADERS, json={
         "iri": "http://kb.local/o/spl#Project", "prefix_local": "Project",
         "label_zh": "项目", "definition": "交付单元",
@@ -113,9 +136,7 @@ def test_entity_split_moves_anchors(host_env):
 @pytest.mark.integration
 def test_ontology_delete_enqueues_violations(host_env):
     client = TestClient(create_app())
-    corpus_id = client.post("/api/v1/corpora", headers=HEADERS, json={
-        "name": "删除库", "subdir": "acc", "ontology_prefix": "del", "vector_dim": 4,
-    }).json()["data"]["corpus_id"]
+    corpus_id = create_corpus(client, "删除库", "acc", "del")
     client.post(f"/api/v1/ontology/classes?corpus_id={corpus_id}", headers=HEADERS, json={
         "iri": "http://kb.local/o/del#Project", "prefix_local": "Project",
         "label_zh": "项目", "definition": "交付单元",
@@ -167,9 +188,7 @@ def test_ontology_delete_enqueues_violations(host_env):
 @pytest.mark.integration
 def test_ontology_patch_class_updates_ttl(host_env):
     client = TestClient(create_app())
-    corpus_id = client.post("/api/v1/corpora", headers=HEADERS, json={
-        "name": "改库", "subdir": "acc", "ontology_prefix": "pat", "vector_dim": 4,
-    }).json()["data"]["corpus_id"]
+    corpus_id = create_corpus(client, "改库", "acc", "pat")
     payload = {
         "iri": "http://kb.local/o/pat#Project", "prefix_local": "Project",
         "label_zh": "项目", "definition": "原始定义",
