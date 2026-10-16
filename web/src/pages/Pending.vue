@@ -151,6 +151,21 @@ watch(
   { immediate: true }
 )
 
+async function locatePid(pid) {
+  kind.value = 'ontology_proposal'
+  highlightPid.value = pid
+  await load()
+  await nextTick()
+  const el = document.querySelector('.highlight-row')
+  if (el) {
+    el.scrollIntoView({ block: 'center' })
+    ElMessage.success('已定位并高亮目标提案')
+    return true
+  }
+  ElMessage.warning('目标提案已不存在或已被处理')
+  return false
+}
+
 function rowClass({ row }) {
   return row.pid === highlightPid.value ? 'highlight-row' : ''
 }
@@ -188,7 +203,8 @@ async function resolve(row, action) {
             '定位未确认类提案',
             { confirmButtonText: '跳转', cancelButtonText: '留在本页', type: 'warning' }
           )
-          router.push({ path: '/pending', query: { corpus_id: row.corpus_id, kind: 'ontology_proposal', pid: target.pid } })
+          router.replace({ path: '/pending', query: { corpus_id: row.corpus_id, kind: 'ontology_proposal', pid: target.pid } })
+          await locatePid(target.pid)
         } catch (err) {
           /* 用户取消跳转 */
         }
