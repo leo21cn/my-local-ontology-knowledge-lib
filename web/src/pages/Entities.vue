@@ -5,7 +5,28 @@
     <el-button style="margin-bottom: 12px" :disabled="selected.length !== 2" @click="merge">合并所选</el-button>
     <el-button style="margin-bottom: 12px" :disabled="selected.length !== 1" @click="showSplit = true">拆分所选</el-button>
 
-    <el-table :data="entities" border @selection-change="(rows) => (selected = rows)">
+    <el-table :data="entities" border @selection-change="(rows) => (selected = rows)"
+              @expand-change="(row, expanded) => expanded && loadRelations(row)">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <div v-if="!relationMap[row.eid] || relationMap[row.eid].loading" style="padding: 6px 12px; color: #909399">
+            加载关系中…
+          </div>
+          <div v-else-if="!relationMap[row.eid].items.length" style="padding: 6px 12px; color: #909399">
+            该实体暂无已确认关系
+          </div>
+          <el-table v-else :data="relationMap[row.eid].items" size="small" border style="margin: 6px 12px; width: auto">
+            <el-table-column label="方向" width="70">
+              <template #default="{ row: r }">
+                <el-tag size="small" :type="r.direction === '出' ? 'success' : 'warning'">{{ r.direction }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="type_label" label="关系属性" />
+            <el-table-column prop="other_label" label="对方实体" />
+            <el-table-column prop="state" label="状态" width="100" />
+          </el-table>
+        </template>
+      </el-table-column>
       <el-table-column type="selection" width="50" />
       <el-table-column prop="label" label="名称" />
       <el-table-column prop="class_iri" label="类 IRI" show-overflow-tooltip />
@@ -79,6 +100,7 @@ const route = useRoute()
 const id = route.params.id
 const entities = ref([])
 const selected = ref([])
+const relationMap = ref({})
 const showCreate = ref(false)
 const showRelation = ref(false)
 const showSplit = ref(false)
@@ -91,6 +113,30 @@ onMounted(load)
 
 async function load() {
   entities.value = await api.get(`/api/v1/entities?corpus_id=${id}`)
+}
+
+async function loadRelations(row) {
+  if (relationMap.value[row.eid]) return
+  relationMap.value[row.eid] = { loading: true, items: [] }
+  try {
+    const data = await api.get(`/api/v1/graph?entity_id=${row.eid}&depth=1`)
+    const nodeMap = Object.fromEntries(data.nodes.map((n) => [n.eid, n.label]))
+    relationMap.value[row.eid] = {
+      loading: false,
+      items: data.edges.map((e) => {
+        const isOut = e.from === row.eid
+        return {
+          direction: isOut ? '出' : '入',
+          type_label: (e.type_iri || '').split('#').pop(),
+          other_label: nodeMap[isOut ? e.to : e.from] || '?',
+          state: e.state,
+        }
+      })
+    }
+  } catch (err) {
+    relationMap.value[row.eid] = { loading: false, items: [] }
+    ElMessage.error(err.message)
+  }
 }
 
 async function createEntity() {
