@@ -382,7 +382,9 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
                     "error": f"DUPLICATE: IRI {iri} 已存在且标签一致（{existing_label}），本条提案为重复内容，已自动关闭"}
         return {"pid": pid, "action": "confirm", "status": "open",
                 "eid": "", "anchor_count": 0,
-                "error": f"IRI_CONFLICT: IRI {iri} 已被{existing_kind}「{existing_label or iri}」占用，请编辑本地名后重试"}
+                "error": f"IRI_CONFLICT: IRI {iri} 已被{existing_kind}「{existing_label or iri}」占用。"
+                         f"若本条提案与该{existing_kind}是同一概念，直接「拒绝」即可（已入册要素已覆盖）；"
+                         f"若是不同概念，请编辑本地名后重试"}
     if payload["element_kind"] == "class":
         entry = {
             "iri": iri,
