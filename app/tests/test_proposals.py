@@ -250,16 +250,22 @@ def test_datatype_proposal_unresolved_domain_keeps_open(driver):
     from kb.proposals import create_ontology_proposal
 
     anchor = {"rel_path": "m.md", "seq": 0, "sha256": "s-m"}
+    class_pid = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "PendingClass", "label": "待确认类", "definition": "待确认的概念", "aliases": []},
+        anchor, "cprop",
+    )
     pid = create_ontology_proposal(
         driver, "c-prop", "datatype_property",
         {"local_name": "dueDate", "label": "截止日期", "definition": "项目的截止日期",
-         "domain": "不存在的类", "range": "http://www.w3.org/2001/XMLSchema#date"},
+         "domain": "待确认类", "range": "http://www.w3.org/2001/XMLSchema#date"},
         anchor, "cprop",
     )
     assert pid
     result = resolve_pending(driver, pid, "confirm")
     assert result["status"] == "open"
     assert result["error"].startswith("DOMAIN_UNRESOLVED")
+    assert result["pending_pids"] == [{"label": "待确认类", "pid": class_pid}]
 
 
 @pytest.mark.integration
