@@ -26,7 +26,11 @@
     </el-form>
     <div style="margin: 8px 0">
       第一步：<el-button size="small" @click="estimateInduct">预估</el-button>
-      <el-button size="small" type="primary" :loading="inducting" @click="confirmInduct">归纳本体</el-button>
+      <el-button size="small" type="primary" :loading="inducting"
+                 :disabled="!!(inductTask && inductTask.status === 'running')"
+                 @click="confirmInduct">
+        {{ inductTask && inductTask.status === 'running' ? '归纳进行中…' : '归纳本体' }}
+      </el-button>
       <span v-if="inductEstimate !== null"> 采样切片 {{ inductEstimate.chunks }} 个（上限 20），约 {{ inductEstimate.estimated_minutes }} 分钟</span>
       <span v-if="inductTask" style="margin-left: 10px">
         任务 {{ inductTask.task_id.slice(0, 8) }}：{{ inductTask.status }}，调用 {{ inductTask.extract_calls }}，提案 {{ inductTask.proposals }}，失败 {{ inductTask.extract_failed }}
@@ -34,7 +38,11 @@
     </div>
     <div style="margin: 8px 0">
       第二步：<el-button size="small" @click="estimateExtract">预估</el-button>
-      <el-button size="small" type="warning" :loading="extracting" @click="confirmExtract">执行抽取</el-button>
+      <el-button size="small" type="warning" :loading="extracting"
+                 :disabled="!!(extractTask && extractTask.status === 'running')"
+                 @click="confirmExtract">
+        {{ extractTask && extractTask.status === 'running' ? '抽取进行中…' : '执行抽取' }}
+      </el-button>
       <span v-if="extractEstimate !== null"> 切片 {{ extractEstimate.chunks }} 个，约 {{ extractEstimate.estimated_minutes }} 分钟</span>
       <span v-if="extractTask" style="margin-left: 10px">
         任务 {{ extractTask.task_id.slice(0, 8) }}：{{ extractTask.status }}，调用 {{ extractTask.extract_calls }}，提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，失败 {{ extractTask.extract_failed }}

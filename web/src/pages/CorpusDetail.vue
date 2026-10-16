@@ -24,7 +24,10 @@
       title="嵌入模型与维度不可修改；如需更换请新建库指向同一子目录，同步验证通过后归档旧库。" />
 
     <el-card header="同步" style="margin-bottom: 12px">
-      <el-button type="primary" :loading="syncing" @click="triggerSync">触发同步</el-button>
+      <el-button type="primary" :loading="syncing"
+                 :disabled="!!(task && task.status === 'running')" @click="triggerSync">
+        {{ task && task.status === 'running' ? '任务进行中…' : '触发同步' }}
+      </el-button>
       <el-button @click="$router.push(`/corpora/${id}/chunks`)">切片查看</el-button>
       <div v-if="task" style="margin-top: 8px">
         任务 {{ task.task_id }}：状态 {{ task.status }}，
@@ -35,8 +38,12 @@
     </el-card>
 
     <el-card header="索引重建">
-      <el-button :loading="rebuilding === 'structure'" @click="rebuild('structure')">结构重建（不产生嵌入费用）</el-button>
-      <el-button type="warning" :loading="rebuilding === 'reembed'" @click="confirmReembed">全量重嵌入</el-button>
+      <el-button :loading="rebuilding === 'structure'"
+                 :disabled="!!(task && task.status === 'running')"
+                 @click="rebuild('structure')">结构重建（不产生嵌入费用）</el-button>
+      <el-button type="warning" :loading="rebuilding === 'reembed'"
+                 :disabled="!!(task && task.status === 'running')"
+                 @click="confirmReembed">全量重嵌入</el-button>
       <div v-if="estimate" style="margin-top: 8px">
         预估：切片 {{ estimate.chunks }}，嵌入请求 {{ estimate.embed_requests }} 条，费用估算 {{ estimate.cost_estimate }}
       </div>

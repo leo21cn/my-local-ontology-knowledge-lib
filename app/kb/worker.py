@@ -11,31 +11,50 @@ def poll_minutes(interval: int) -> set[int]:
     return set(range(0, 60, max(1, interval)))
 
 
+async def _release(ctx, kind: str, corpus_id: str) -> None:
+    try:
+        await ctx["redis"].delete(f"kb:joblock:{kind}:{corpus_id}")
+    except Exception:
+        pass
+
+
 async def run_sync_job(ctx, corpus_id: str, scope: str = "all",
                        file_path: str | None = None) -> str:
-    return await sync_module.run_sync(
-        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
-    )
+    try:
+        return await sync_module.run_sync(
+            get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+        )
+    finally:
+        await _release(ctx, "sync", corpus_id)
 
 
 async def rebuild_job(ctx, corpus_id: str, mode: str) -> str:
-    return await sync_module.run_rebuild(
-        get_settings(), corpus_id, mode, task_id=ctx.get("job_id")
-    )
+    try:
+        return await sync_module.run_rebuild(
+            get_settings(), corpus_id, mode, task_id=ctx.get("job_id")
+        )
+    finally:
+        await _release(ctx, "rebuild", corpus_id)
 
 
 async def extract_job(ctx, corpus_id: str, scope: str = "all",
                       file_path: str | None = None) -> str:
-    return await sync_module.run_extract(
-        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
-    )
+    try:
+        return await sync_module.run_extract(
+            get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+        )
+    finally:
+        await _release(ctx, "extract", corpus_id)
 
 
 async def induct_job(ctx, corpus_id: str, scope: str = "all",
                      file_path: str | None = None) -> str:
-    return await sync_module.run_induct(
-        get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
-    )
+    try:
+        return await sync_module.run_induct(
+            get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+        )
+    finally:
+        await _release(ctx, "induct", corpus_id)
 
 
 async def poll_all(ctx) -> None:

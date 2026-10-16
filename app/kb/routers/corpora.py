@@ -84,11 +84,13 @@ async def trigger_sync(corpus_id: str, request: Request, body: SyncTrigger | Non
     if get_corpus(driver, corpus_id) is None:
         raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
     trigger = body or SyncTrigger()
+    if not await _acquire_job_lock(request, "sync", corpus_id):
+        raise _job_busy()
     job = await request.app.state.arq.enqueue_job(
         "run_sync_job", corpus_id, trigger.scope, trigger.file_path
     )
     if job is None:
-        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+        raise _job_busy()
     return {"data": {"task_id": job.job_id}}
 
 
@@ -105,10 +107,30 @@ async def trigger_rebuild(corpus_id: str, request: Request, body: RebuildTrigger
         raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
     if body.mode not in ("structure", "reembed"):
         raise HTTPException(400, detail={"code": "BAD_REBUILD_MODE", "message": body.mode})
+    if not await _acquire_job_lock(request, "rebuild", corpus_id):
+        raise _job_busy()
     job = await request.app.state.arq.enqueue_job("rebuild_job", corpus_id, body.mode)
     if job is None:
-        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+        raise _job_busy()
     return {"data": {"task_id": job.job_id}}
+
+
+JOB_LOCK_TTL = {
+    "sync": 600,
+    "rebuild": 10800,
+    "extract": 10800,
+    "induct": 10800,
+}
+
+
+async def _acquire_job_lock(request: Request, kind: str, corpus_id: str) -> bool:
+    key = f"kb:joblock:{kind}:{corpus_id}"
+    return bool(await request.app.state.arq.set(key, "1", nx=True, ex=JOB_LOCK_TTL[kind]))
+
+
+def _job_busy() -> HTTPException:
+    return HTTPException(409, detail={"code": "JOB_BUSY",
+                                      "message": "该库已有同类任务在运行或排队，请稍候"})
 
 
 @router.get("/{corpus_id}/extract/estimate")
@@ -131,11 +153,13 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
                     "message": "本体为空：请先在本体页创建至少一个类或对象属性，再执行 LLM 抽取"},
         )
     trigger = body or ExtractTrigger()
+    if not await _acquire_job_lock(request, "extract", corpus_id):
+        raise _job_busy()
     job = await request.app.state.arq.enqueue_job(
         "extract_job", corpus_id, trigger.scope, trigger.file_path
     )
     if job is None:
-        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+        raise _job_busy()
     return {"data": {"task_id": job.job_id}}
 
 
@@ -145,11 +169,13 @@ async def trigger_induct(corpus_id: str, request: Request, body: ExtractTrigger,
     if get_corpus(driver, corpus_id) is None:
         raise HTTPException(404, detail={"code": "CORPUS_NOT_FOUND", "message": corpus_id})
     trigger = body or ExtractTrigger()
+    if not await _acquire_job_lock(request, "induct", corpus_id):
+        raise _job_busy()
     job = await request.app.state.arq.enqueue_job(
         "induct_job", corpus_id, trigger.scope, trigger.file_path
     )
     if job is None:
-        raise HTTPException(409, detail={"code": "JOB_BUSY", "message": "同名任务已在队列中"})
+        raise _job_busy()
     return {"data": {"task_id": job.job_id}}
 
 

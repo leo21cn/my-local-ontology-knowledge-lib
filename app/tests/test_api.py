@@ -210,6 +210,45 @@ def test_token_required(host_env):
     assert TestClient(create_app()).get("/api/v1/corpora").status_code == 401
 
 
+class FakeJob:
+    def __init__(self, job_id: str):
+        self.job_id = job_id
+
+
+class FakePool:
+    def __init__(self):
+        self.ids = set()
+        self.locks = set()
+
+    async def enqueue_job(self, function, *args, **kwargs):
+        return FakeJob("fake-job-id")
+
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.locks:
+            return None
+        self.locks.add(key)
+        return True
+
+
+@pytest.mark.integration
+def test_trigger_endpoints_dedupe_same_job(host_env):
+    client = TestClient(create_app())
+    corpus_id = create_corpus(client, "去重库", "acc", "dedup")
+    client.app.state.arq = FakePool()
+
+    r1 = client.post(f"/api/v1/corpora/{corpus_id}/induct", headers=HEADERS, json={"scope": "all"})
+    r2 = client.post(f"/api/v1/corpora/{corpus_id}/induct", headers=HEADERS, json={"scope": "all"})
+    assert r1.status_code == 200
+    assert r2.status_code == 409
+    assert r2.json()["error"]["code"] == "JOB_BUSY"
+    assert "同类任务" in r2.json()["error"]["message"]
+
+    r3 = client.post(f"/api/v1/corpora/{corpus_id}/sync", headers=HEADERS, json={"scope": "all"})
+    r4 = client.post(f"/api/v1/corpora/{corpus_id}/sync", headers=HEADERS, json={"scope": "all"})
+    assert r3.status_code == 200
+    assert r4.status_code == 409
+
+
 @pytest.mark.integration
 def test_ttl_import_upsert_and_skip(host_env):
     client = TestClient(create_app())
