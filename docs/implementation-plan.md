@@ -5939,6 +5939,7 @@ git commit -m "feat: add manual two-stage llm knowledge modeling (induction and 
 以下修正为实施过程中基于实测环境作出的必要调整，与上文代码块存在差异处以此节为准：
 
 16. **本体归纳扩展数据属性**（Task 15）：初始归纳 schema 仅覆盖类与对象属性，实测发现数据属性（如「名称」「发布日期」）缺失，将归纳 schema 扩展为三类输出（classes/object_properties/datatype_properties），数据属性 range 走 xsd 白名单（中文类型名映射 + `xsd:xxx` 原样接受），确认时写入 OntDataProp 并物化 TTL；提案编辑对话框按 element_kind 区分表单。
+17. **图谱全部视图与逐级展开**（Task 10/11 界面增强）：`GET /api/v1/graph` 增加 `mode=all`（需 corpus_id，返回全库实体与两端均在库内的 REL 边，节点上限 500、返回 total 与 truncated 标志）；中心模式 entity_id 改为可选参数（缺省 400 ENTITY_ID_REQUIRED）。前端 Graph.vue 增加模式单选（全部视图默认）、点击节点按 1 跳增量合入画布（expanded 集合去重）、全部视图初始物理布局稳定后关闭物理、截断提示与重置按钮。
 
 1. **锚点建模改为 `(:Anchor)` 节点**（Task 6、7、9、10）：Neo4j 属性只允许基本类型数组，不支持对象数组，`Entity.anchors` 无法作为属性存储。锚点改为 `(:Anchor {rel_path, seq, sha256})` 节点（复合唯一约束），经 `(:Entity)-[:ANCHOR_OF]->(:Anchor)` 关联；实体节点不再持有 anchors 属性。neo4j_store 新增 `ensure_anchor_link`、`list_entity_anchors`、`count_entity_anchors`、`move_anchors_to`、`remove_anchor_links`、`list_entities_with_anchors`；proposals 的 `ensure_entity`、`find_entities_by_anchor_rel_path`、`split_entity` 与 search 的 `EXPAND_QUERY`、`CLASS_MATCH_QUERY`、graph_view 的锚点计数均改为经锚点节点查询。Relation 的 `evidence_anchors` 以 JSON 字符串存储。
 2. **本体 IRI 路由使用 `{iri:path}` 转换器**（Task 10）：`/ontology/classes/{iri}` 等六个读写路由改为 `{iri:path}`，避免 IRI 中编码的 `/` 破坏路径匹配。
