@@ -8,13 +8,15 @@ export function token() {
 }
 
 async function call(path, options = {}) {
+  const headers = {
+    Authorization: `Bearer ${token()}`,
+    ...(options.headers || {})
+  }
+  if (!('Content-Type' in headers)) headers['Content-Type'] = 'application/json'
+  if (headers['Content-Type'] === undefined) delete headers['Content-Type']
   const resp = await fetch(path, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token()}`,
-      ...(options.headers || {})
-    }
+    headers
   })
   if (resp.status === 401) {
     localStorage.removeItem('kb_token')
