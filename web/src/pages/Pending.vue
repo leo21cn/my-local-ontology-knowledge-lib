@@ -17,7 +17,7 @@
       title="建议先确认「类」提案，再确认「对象属性」提案：对象属性的 domain/range 引用类标签，对应类未确认时确认会失败。"
     />
 
-    <el-table :data="grouped" border>
+    <el-table :data="grouped" border :row-class-name="rowClass">
       <el-table-column prop="pid" label="ID" width="260" show-overflow-tooltip />
       <el-table-column label="摘要">
         <template #default="{ row }">
@@ -94,12 +94,16 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 
+const route = useRoute()
+const router = useRouter()
 const items = ref([])
 const kind = ref('proposal')
+const highlightPid = ref('')
 const retypeDialog = ref(false)
 const retypeFor = ref(null)
 const retypeIri = ref('')
@@ -132,7 +136,20 @@ const iriPreview = computed(() => {
   return base + (editForm.value?.local_name || '')
 })
 
-onMounted(load)
+onMounted(async () => {
+  if (route.query.kind) kind.value = String(route.query.kind)
+  if (route.query.pid) highlightPid.value = String(route.query.pid)
+  await load()
+  if (highlightPid.value) {
+    await nextTick()
+    const el = document.querySelector('.highlight-row')
+    el && el.scrollIntoView({ block: 'center' })
+  }
+})
+
+function rowClass({ row }) {
+  return row.pid === highlightPid.value ? 'highlight-row' : ''
+}
 
 async function load() {
   items.value = await api.get('/api/v1/pending')
@@ -159,6 +176,19 @@ async function resolve(row, action) {
       ElMessage.success(`已确认，实体 ${resp.eid} 锚点 ${resp.anchor_count} 个`)
     } else if (resp.error) {
       ElMessage.warning(`未能建立：${resp.error}`)
+      if (resp.pending_pids && resp.pending_pids.length) {
+        const target = resp.pending_pids[0]
+        try {
+          await ElMessageBox.confirm(
+            `未确认的类提案「${target.label}」存在，是否跳转定位到该提案？`,
+            '定位未确认类提案',
+            { confirmButtonText: '跳转', cancelButtonText: '留在本页', type: 'warning' }
+          )
+          router.push({ path: '/pending', query: { corpus_id: row.corpus_id, kind: 'ontology_proposal', pid: target.pid } })
+        } catch (err) {
+          /* 用户取消跳转 */
+        }
+      }
     } else {
       ElMessage.success(`已${action === 'reject' ? '拒绝' : '处理'}`)
     }
@@ -230,5 +260,9 @@ async function doRetype() {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+:deep(.highlight-row) {
+  background-color: #ecf5ff !important;
 }
 </style>

@@ -114,26 +114,26 @@ def _pending_payload(driver, pid: str) -> dict:
     }
 
 
-def _pending_class_labels(driver, corpus_id: str) -> set[str]:
+def _pending_class_proposals(driver, corpus_id: str) -> dict[str, str]:
     with driver.session() as session:
         rows = session.run(
             """
             MATCH (p:PendingItem {corpus_id: $corpus_id, kind: 'ontology_proposal', status: 'open'})
-            RETURN p.payload AS payload
+            RETURN p.payload AS payload, p.pid AS pid
             """,
             corpus_id=corpus_id,
         ).data()
-    labels = set()
+    mapping: dict[str, str] = {}
     for row in rows:
         payload = json.loads(row["payload"]) if row["payload"] else {}
         if payload.get("element_kind") == "class" and payload.get("label"):
-            labels.add(payload["label"])
-    return labels
+            mapping[payload["label"]] = row["pid"]
+    return mapping
 
 
 def _unresolved_message(driver, corpus_id: str, missing: list[str],
                         available: str, code: str) -> str:
-    pending_class_labels = _pending_class_labels(driver, corpus_id)
+    pending_class_labels = _pending_class_proposals(driver, corpus_id)
     hints = []
     for label in missing:
         if label in pending_class_labels:
@@ -146,6 +146,12 @@ def _unresolved_message(driver, corpus_id: str, missing: list[str],
     else:
         base += f"（已确认类的标签：{available}）"
     return base + "。" + "；".join(hints) + "。"
+
+
+def _pending_pids_for(driver, corpus_id: str, missing: list[str]) -> list[dict]:
+    mapping = _pending_class_proposals(driver, corpus_id)
+    return [{"label": label, "pid": mapping[label]}
+            for label in missing if label in mapping]
 
 
 def edit_ontology_proposal(driver, pid: str, fields: dict) -> dict:
@@ -425,10 +431,12 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
         domain_iri = label_to_iri.get(payload.get("domain", ""), "")
         if not domain_iri:
             available = "、".join(sorted(set(c.get("label_zh", "") for c in classes if c.get("label_zh"))))
+            missing = [payload.get("domain", "")]
             return {"pid": pid, "action": "confirm", "status": "open",
                     "eid": "", "anchor_count": 0,
                     "error": _unresolved_message(
-                        driver, corpus_id, [payload.get("domain", "")], available, "DOMAIN_UNRESOLVED")}
+                        driver, corpus_id, missing, available, "DOMAIN_UNRESOLVED"),
+                    "pending_pids": _pending_pids_for(driver, corpus_id, missing)}
         entry = {
             "iri": iri,
             "label_zh": payload["label"],
@@ -461,7 +469,8 @@ def _confirm_ontology_proposal(driver, corpus_id: str, pid: str, payload: dict) 
             return {"pid": pid, "action": "confirm", "status": "open",
                     "eid": "", "anchor_count": 0,
                     "error": _unresolved_message(
-                        driver, corpus_id, missing, available, "DOMAIN_RANGE_UNRESOLVED")}
+                        driver, corpus_id, missing, available, "DOMAIN_RANGE_UNRESOLVED"),
+                    "pending_pids": _pending_pids_for(driver, corpus_id, missing)}
         entry = {
             "iri": iri,
             "label_zh": payload["label"],
