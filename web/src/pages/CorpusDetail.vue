@@ -12,6 +12,14 @@
       <el-descriptions-item label="点数">{{ corpus.points }}</el-descriptions-item>
       <el-descriptions-item label="归档">{{ corpus.archived ? '是' : '否' }}</el-descriptions-item>
     </el-descriptions>
+    <div style="margin: 12px 0">
+      <el-button :type="corpus.archived ? 'success' : 'warning'" @click="toggleArchive">
+        {{ corpus.archived ? '取消归档' : '归档' }}
+      </el-button>
+      <span style="color: #909399; font-size: 12px; margin-left: 8px">
+        {{ corpus.archived ? '归档后不再轮询同步，检索跳过该库' : '归档可停止轮询同步并让检索跳过该库，可随时取消' }}
+      </span>
+    </div>
     <el-alert type="info" :closable="false" style="margin: 12px 0"
       title="嵌入模型与维度不可修改；如需更换请新建库指向同一子目录，同步验证通过后归档旧库。" />
 
@@ -56,6 +64,16 @@ onUnmounted(() => timer && clearInterval(timer))
 
 async function load() {
   corpus.value = await api.get(`/api/v1/corpora/${id}`)
+}
+
+async function toggleArchive() {
+  try {
+    await api.patch(`/api/v1/corpora/${id}`, { archived: !corpus.value.archived })
+    ElMessage.success(corpus.value.archived ? '已取消归档' : '已归档')
+    await load()
+  } catch (err) {
+    ElMessage.error(err.message)
+  }
 }
 
 async function poll(taskId) {

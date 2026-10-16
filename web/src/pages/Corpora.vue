@@ -13,9 +13,13 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="archived" label="归档" width="80">
+      <el-table-column prop="archived" label="归档" width="90">
         <template #default="{ row }">
-          <el-tag v-if="row.archived" type="warning">已归档</el-tag>
+          <el-tag
+            :type="row.archived ? 'warning' : 'info'"
+            style="cursor: pointer"
+            @click="toggleArchive(row)"
+          >{{ row.archived ? '已归档' : '未归档' }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="410">
@@ -94,6 +98,16 @@ async function remove(row) {
     await load()
   } catch (err) {
     if (err !== 'cancel') ElMessage.error(err.message)
+  }
+}
+
+async function toggleArchive(row) {
+  try {
+    await api.patch(`/api/v1/corpora/${row.corpus_id}`, { archived: !row.archived })
+    ElMessage.success(row.archived ? '已取消归档，恢复轮询与检索' : '已归档：停止轮询同步，检索跳过该库')
+    await load()
+  } catch (err) {
+    ElMessage.error(err.message)
   }
 }
 </script>
