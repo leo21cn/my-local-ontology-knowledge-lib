@@ -94,7 +94,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
@@ -136,16 +136,20 @@ const iriPreview = computed(() => {
   return base + (editForm.value?.local_name || '')
 })
 
-onMounted(async () => {
-  if (route.query.kind) kind.value = String(route.query.kind)
-  if (route.query.pid) highlightPid.value = String(route.query.pid)
-  await load()
-  if (highlightPid.value) {
-    await nextTick()
-    const el = document.querySelector('.highlight-row')
-    el && el.scrollIntoView({ block: 'center' })
-  }
-})
+watch(
+  () => route.query,
+  async (query) => {
+    if (query.kind) kind.value = String(query.kind)
+    highlightPid.value = query.pid ? String(query.pid) : ''
+    await load()
+    if (highlightPid.value) {
+      await nextTick()
+      const el = document.querySelector('.highlight-row')
+      el && el.scrollIntoView({ block: 'center' })
+    }
+  },
+  { immediate: true }
+)
 
 function rowClass({ row }) {
   return row.pid === highlightPid.value ? 'highlight-row' : ''
