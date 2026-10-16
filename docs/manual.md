@@ -210,7 +210,7 @@ networks:
 - **合并**：勾选两行合并，被合并实体的锚点与关系并入留存实体，无锚点丢失。
 - **拆分**：勾选一行拆分，选定锚点子集（必须非空且留至少一个锚点在源实体）+ 新名称（类默认沿用源实体类）；拆分后锚点总数不变。
 
-「图谱」页：选实体、切深度（1/2 跳）、按类着色只读浏览。**画布不提供建关系**，关系一律走实体页。
+「图谱」页：默认**全部视图**一次展示库内全部实体与已确认关系（超过 500 个实体时截断并提示）；「中心实体」模式选实体、切深度（1/2 跳）浏览子图。**逐级下钻**：任一模式下点击节点即展开其下一级关系并合入画布，可不断点击深入；滚轮缩放、按住空白平移；「重置」恢复初始画面。实体按类着色、边显示属性本地名。**画布不提供建关系**，关系一律走实体页。
 
 实体的锚点来自：提案确认（自动带切片锚点）或手工新建。
 
@@ -347,7 +347,7 @@ docker compose up -d worker api
 | GET/POST | /entities、/entities/merge、/entities/split | 实体管理 |
 | POST | /relations | 建关系（写入前 domain/range 校验） |
 | GET | /pending、/pending/{pid}/resolve | 待处理队列与裁决 |
-| GET | /graph?entity_id=&depth= | 图谱浏览 |
+| GET | /graph?mode=all&corpus_id= 或 /graph?entity_id=&depth= | 图谱浏览（全部视图 / 中心实体） |
 | GET | /stats/corpus/{id} | 任务/令牌/重试/费用/失败/积压 |
 | POST | /retrieval | Dify 外部知识库契约 |
 | MCP | /mcp/ | kb_search / kb_graph_query / kb_ontology_export |
