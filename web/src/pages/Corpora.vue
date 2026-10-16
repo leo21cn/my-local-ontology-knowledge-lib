@@ -1,7 +1,12 @@
 <template>
   <div>
     <el-button type="primary" @click="dialog = true">新建库</el-button>
-    <el-table :data="corpora" border style="margin-top: 12px">
+    <el-table class="corpus-table" :data="corpora" border style="margin-top: 12px">
+      <el-table-column width="44">
+        <template #default>
+          <span class="drag-handle" style="cursor: grab; color: #909399; font-size: 16px">⠿</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="name" label="名称" />
       <el-table-column prop="subdir" label="子目录" />
       <el-table-column prop="embedding_model" label="模型" />
@@ -66,12 +71,14 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import Sortable from 'sortablejs'
 import { api } from '../api'
 
 const corpora = ref([])
 const dialog = ref(false)
+let sortable = null
 const form = reactive({
   name: '', subdir: '', ontology_prefix: '', embedding_model: 'text-embedding-v4',
   vector_dim: 1024, chunk_max_chars: 700, chunk_overlap: 60,
@@ -82,6 +89,30 @@ onMounted(load)
 
 async function load() {
   corpora.value = await api.get('/api/v1/corpora')
+  await initSortable()
+}
+
+async function initSortable() {
+  await nextTick()
+  if (sortable) sortable.destroy()
+  const tbody = document.querySelector('.corpus-table .el-table__body tbody')
+  if (!tbody) return
+  sortable = Sortable.create(tbody, {
+    handle: '.drag-handle',
+    animation: 150,
+    onEnd: async (evt) => {
+      if (evt.oldIndex === evt.newIndex) return
+      const moved = corpora.value.splice(evt.oldIndex, 1)[0]
+      corpora.value.splice(evt.newIndex, 0, moved)
+      try {
+        await api.post('/api/v1/corpora/order', { ids: corpora.value.map((c) => c.corpus_id) })
+        ElMessage.success('顺序已保存')
+      } catch (err) {
+        ElMessage.error(err.message)
+        await load()
+      }
+    }
+  })
 }
 
 async function create() {

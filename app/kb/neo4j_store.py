@@ -20,7 +20,7 @@ CONSTRAINT_STATEMENTS = [
 
 CORPUS_FIELDS = (
     "corpus_id name subdir embedding_model vector_dim chunk_max_chars "
-    "chunk_overlap ontology_prefix archived created_at"
+    "chunk_overlap ontology_prefix archived created_at sort_order"
 )
 
 
@@ -52,7 +52,9 @@ def get_corpus(driver, corpus_id: str) -> dict | None:
 
 def list_corpora(driver) -> list[dict]:
     with driver.session() as session:
-        return [dict(r["c"]) for r in session.run("MATCH (c:Corpus) RETURN c")]
+        return [dict(r["c"]) for r in session.run(
+            "MATCH (c:Corpus) RETURN c ORDER BY coalesce(c.sort_order, c.created_at)"
+        )]
 
 
 def delete_corpus(driver, corpus_id: str) -> None:

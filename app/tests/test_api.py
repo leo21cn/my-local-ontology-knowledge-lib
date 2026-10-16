@@ -210,6 +210,22 @@ def test_token_required(host_env):
     assert TestClient(create_app()).get("/api/v1/corpora").status_code == 401
 
 
+@pytest.mark.integration
+def test_corpus_order_endpoint(host_env):
+    client = TestClient(create_app())
+    ids = [
+        create_corpus(client, "排序库甲", "acc", "ord1"),
+        create_corpus(client, "排序库乙", "acc", "ord2"),
+        create_corpus(client, "排序库丙", "acc", "ord3"),
+    ]
+    resp = client.post("/api/v1/corpora/order", headers=HEADERS,
+                       json={"ids": [ids[2], ids[0], ids[1]]})
+    assert resp.status_code == 200
+    listed = client.get("/api/v1/corpora", headers=HEADERS).json()["data"]
+    ordered = [c["corpus_id"] for c in listed if c["corpus_id"] in ids]
+    assert ordered == [ids[2], ids[0], ids[1]]
+
+
 class FakeJob:
     def __init__(self, job_id: str):
         self.job_id = job_id

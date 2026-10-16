@@ -19,7 +19,14 @@ from kb.neo4j_store import (
 )
 from kb.ontology import export_ttl
 from kb.qdrant_store import collection_name, ensure_collection
-from kb.schemas import CorpusCreate, CorpusUpdate, ExtractTrigger, RebuildTrigger, SyncTrigger
+from kb.schemas import (
+    CorpusCreate,
+    CorpusOrder,
+    CorpusUpdate,
+    ExtractTrigger,
+    RebuildTrigger,
+    SyncTrigger,
+)
 from kb.sync import estimate_extract, estimate_rebuild
 
 router = APIRouter(prefix="/api/v1/corpora", dependencies=[Depends(require_token)])
@@ -34,7 +41,8 @@ async def create_corpus(body: CorpusCreate, driver=Depends(get_neo4j), client=De
     init_schema(driver)
     corpus_id = uuid4().hex[:12]
     ensure_collection(client, corpus_id, body.vector_dim)
-    corpus = {**body.model_dump(), "corpus_id": corpus_id, "archived": False, "created_at": time.time()}
+    corpus = {**body.model_dump(), "corpus_id": corpus_id, "archived": False,
+              "created_at": time.time(), "sort_order": time.time()}
     upsert_corpus(driver, corpus)
     new_ont_version(driver, corpus_id)
     export_ttl(get_ontology(driver, corpus_id), f"{settings.kb_ontology_export_dir}/{corpus_id}.ttl")
@@ -44,6 +52,17 @@ async def create_corpus(body: CorpusCreate, driver=Depends(get_neo4j), client=De
 @router.get("")
 async def read_corpora(driver=Depends(get_neo4j)):
     return {"data": list_corpora(driver)}
+
+
+@router.post("/order")
+async def reorder_corpora(body: CorpusOrder, driver=Depends(get_neo4j)):
+    with driver.session() as session:
+        for index, corpus_id in enumerate(body.ids):
+            session.run(
+                "MATCH (c:Corpus {corpus_id: $id}) SET c.sort_order = $order",
+                id=corpus_id, order=index,
+            )
+    return {"data": {"ordered": len(body.ids)}}
 
 
 @router.get("/{corpus_id}")

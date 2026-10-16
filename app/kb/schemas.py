@@ -27,6 +27,10 @@ class SyncTrigger(BaseModel):
     file_path: str | None = None
 
 
+class CorpusOrder(BaseModel):
+    ids: list[str]
+
+
 class RebuildTrigger(BaseModel):
     mode: str
 
