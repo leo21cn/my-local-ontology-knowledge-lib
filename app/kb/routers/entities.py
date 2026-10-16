@@ -117,8 +117,9 @@ async def create_relation(body: RelationIn, driver=Depends(get_neo4j)):
 
 
 @router.get("/pending")
-async def read_pending(corpus_id: str | None = None, driver=Depends(get_neo4j)):
-    return {"data": list_pending(driver, corpus_id)}
+async def read_pending(corpus_id: str | None = None, limit: int = 500,
+                       driver=Depends(get_neo4j)):
+    return {"data": list_pending(driver, corpus_id, limit=min(limit, 5000))}
 
 
 @router.post("/pending/{pid}/resolve")

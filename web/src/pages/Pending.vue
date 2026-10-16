@@ -171,7 +171,7 @@ function rowClass({ row }) {
 }
 
 async function load() {
-  items.value = await api.get('/api/v1/pending')
+  items.value = await api.get('/api/v1/pending?limit=5000')
   const ontologyItems = items.value.filter((i) => i.kind === 'ontology_proposal')
   if (ontologyItems.length) {
     const corpusIds = [...new Set(ontologyItems.map((i) => i.corpus_id))]
