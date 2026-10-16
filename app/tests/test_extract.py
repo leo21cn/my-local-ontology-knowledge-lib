@@ -1,4 +1,11 @@
-from kb.extract import build_induction_prompt, build_prompt, build_signature, parse_extraction, parse_induction
+from kb.extract import (
+    build_induction_prompt,
+    build_prompt,
+    build_relevant_signature,
+    build_signature,
+    parse_extraction,
+    parse_induction,
+)
 
 SIGNATURE = {
     "classes": [{"iri": "http://kb.local/o/t#Project", "label": "项目", "aliases": [], "definition": "交付单元"}],
@@ -41,6 +48,29 @@ def test_build_prompt_contains_signature_and_text():
     prompt = build_prompt(SIGNATURE, TEXT)
     assert "http://kb.local/o/t#Project" in prompt
     assert TEXT in prompt
+
+
+def test_build_relevant_signature_filters_by_label_and_alias():
+    signature = {
+        "classes": [
+            {"iri": "http://kb.local/o/t#Project", "label": "项目", "aliases": ["项目组"], "definition": ""},
+            {"iri": "http://kb.local/o/t#Person", "label": "人员", "aliases": [], "definition": ""},
+        ],
+        "object_properties": [
+            {"iri": "http://kb.local/o/t#belongsTo", "label": "属于",
+             "domain": "http://kb.local/o/t#Person", "range": "http://kb.local/o/t#Project"},
+            {"iri": "http://kb.local/o/t#other", "label": "其他",
+             "domain": "http://kb.local/o/t#X", "range": "http://kb.local/o/t#Y"},
+        ],
+    }
+    relevant = build_relevant_signature(signature, "本项目组由人员甲负责")
+    assert [c["iri"] for c in relevant["classes"]] == [
+        "http://kb.local/o/t#Project", "http://kb.local/o/t#Person"
+    ]
+    assert [p["iri"] for p in relevant["object_properties"]] == ["http://kb.local/o/t#belongsTo"]
+    empty = build_relevant_signature(signature, "完全无关的内容")
+    assert empty["classes"] == []
+    assert empty["object_properties"] == []
 
 
 INDUCTION_TEXT = "本指引所称金融产品，是指面向投资者发行的理财产品、基金与保险产品。金融机构销售金融产品时应当向投资者充分揭示风险。"

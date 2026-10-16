@@ -11,7 +11,12 @@ from qdrant_client.models import PointStruct
 from kb.chunker import chunk_markdown, chunk_sha256, extract_frontmatter
 from kb.config import Settings
 from kb.embed import EmbedError, embed_with_retry
-from kb.extract import build_signature, extract_chunk_with_retry, induct_chunk_with_retry
+from kb.extract import (
+    build_relevant_signature,
+    build_signature,
+    extract_chunk_with_retry,
+    induct_chunk_with_retry,
+)
 from kb.neo4j_store import (
     get_corpus,
     get_driver,
@@ -380,10 +385,15 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
 
         async def extract_one(chunk: dict) -> None:
             nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            relevant = build_relevant_signature(signature, chunk["text"])
+            if not relevant["classes"]:
+                logger.info("extract skip chunk without class hint: %s#%s",
+                            chunk["asset_rel_path"], chunk["seq"])
+                return
             async with semaphore:
                 try:
                     parsed, tokens, _ = await extract_chunk_with_retry(
-                        settings, chunk["text"], signature
+                        settings, chunk["text"], relevant
                     )
                 except EmbedError as exc:
                     failed_total += 1

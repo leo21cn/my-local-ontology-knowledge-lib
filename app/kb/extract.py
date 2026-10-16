@@ -33,6 +33,20 @@ def build_signature(ontology: dict) -> dict:
     }
 
 
+def build_relevant_signature(signature: dict, text: str) -> dict:
+    included = []
+    for cls in signature["classes"]:
+        names = [cls.get("label", "")] + cls.get("aliases", [])
+        if any(name and name in text for name in names):
+            included.append(cls)
+    included_iris = {cls["iri"] for cls in included}
+    props = [
+        p for p in signature["object_properties"]
+        if p.get("domain") in included_iris or p.get("range") in included_iris
+    ]
+    return {"classes": included, "object_properties": props}
+
+
 def build_prompt(signature: dict, text: str) -> str:
     return (
         "你是知识图谱抽取助手。根据给定的本体签名，从文本中抽取实体与关系。\n\n"

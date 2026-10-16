@@ -2,10 +2,22 @@ import pytest
 from qdrant_client import QdrantClient
 
 from kb.config import Settings, get_settings
-from kb.neo4j_store import delete_corpus, get_driver, get_task, init_schema, upsert_corpus
+from kb.neo4j_store import (
+    delete_corpus,
+    get_driver,
+    get_task,
+    init_schema,
+    upsert_corpus,
+    write_ont_class,
+)
 from kb.proposals import ensure_entity, list_pending
 from kb.qdrant_store import collection_name
 from kb.sync import file_sha256, run_extract, run_induct, run_sync, scan_assets
+
+PROJECT_CLASS = {
+    "iri": "http://kb.local/o/csync#Project", "label_zh": "项目组",
+    "definition": "交付单元", "parent_iris": [], "disjoint_with": [],
+}
 
 CORPUS = {
     "corpus_id": "c-sync", "name": "同步库", "subdir": "acc",
@@ -120,13 +132,16 @@ async def test_run_extract_creates_proposals_and_records(tmp_path, monkeypatch):
     }
 
     async def fake_extract(settings, text, signature):
+        captured.append((text, signature))
         return parsed, 100, 0
 
+    captured = []
     monkeypatch.setattr("kb.sync.extract_chunk_with_retry", fake_extract)
 
     driver = get_driver(settings)
     init_schema(driver)
     upsert_corpus(driver, CORPUS)
+    write_ont_class(driver, "c-sync", PROJECT_CLASS)
     await run_sync(settings, "c-sync")
 
     task = await run_extract(settings, "c-sync")
@@ -137,6 +152,8 @@ async def test_run_extract_creates_proposals_and_records(tmp_path, monkeypatch):
     assert record["extract_tokens"] == 100
     assert record["proposals"] == 1
     assert record["extract_failed"] == 0
+    assert len(captured) == 1
+    assert captured[0][1]["classes"][0]["label"] == "项目组"
     items = list_pending(driver, "c-sync")
     assert any(i["kind"] == "proposal" and i["payload"].get("term") == "项目组甲" for i in items)
 
@@ -165,6 +182,7 @@ async def test_run_extract_failure_goes_to_pending(tmp_path, monkeypatch):
     driver = get_driver(settings)
     init_schema(driver)
     upsert_corpus(driver, CORPUS)
+    write_ont_class(driver, "c-sync", PROJECT_CLASS)
     await run_sync(settings, "c-sync")
 
     task = await run_extract(settings, "c-sync")
@@ -173,6 +191,38 @@ async def test_run_extract_failure_goes_to_pending(tmp_path, monkeypatch):
     assert record["extract_failed"] == 1
     items = list_pending(driver, "c-sync")
     assert any(i["kind"] == "extract_failed" for i in items)
+
+    delete_corpus(driver, "c-sync")
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+    client.delete_collection(collection_name("c-sync"))
+    driver.close()
+    client.close()
+
+
+@pytest.mark.integration
+async def test_run_extract_skips_chunks_without_class_hint(tmp_path, monkeypatch):
+    (tmp_path / "acc").mkdir()
+    (tmp_path / "acc" / "a.md").write_text("# 标题\n无关内容", encoding="utf-8")
+
+    settings = get_settings_for(tmp_path)
+    FakeEmbed(monkeypatch)
+
+    async def fake_extract(settings, text, signature):
+        raise AssertionError("无类提示的切片不应调用模型")
+
+    monkeypatch.setattr("kb.sync.extract_chunk_with_retry", fake_extract)
+
+    driver = get_driver(settings)
+    init_schema(driver)
+    upsert_corpus(driver, CORPUS)
+    write_ont_class(driver, "c-sync", PROJECT_CLASS)
+    await run_sync(settings, "c-sync")
+
+    task = await run_extract(settings, "c-sync")
+    record = get_task(driver, task)
+    assert record["status"] == "done"
+    assert record["extract_calls"] == 0
+    assert record["extract_failed"] == 0
 
     delete_corpus(driver, "c-sync")
     client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
