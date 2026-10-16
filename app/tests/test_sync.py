@@ -225,6 +225,55 @@ async def test_run_induct_creates_ontology_proposals(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+async def test_run_induct_structural_check(tmp_path, monkeypatch):
+    (tmp_path / "acc").mkdir()
+    (tmp_path / "acc" / "a.md").write_text("# 标题\n项目组甲的说明文字", encoding="utf-8")
+
+    settings = get_settings_for(tmp_path)
+    FakeEmbed(monkeypatch)
+
+    parsed = {
+        "classes": [{"local_name": "Client", "label": "客户", "definition": "个体", "aliases": []}],
+        "object_properties": [
+            {"local_name": "serves", "label": "服务", "definition": "服务客户",
+             "domain": "客户", "range": "客户"},
+            {"local_name": "ghostLink", "label": "幽灵关联", "definition": "引用不存在的类",
+             "domain": "幽灵类", "range": "客户"},
+        ],
+        "datatype_properties": [],
+        "discarded": 0,
+    }
+
+    async def fake_induct(settings, text):
+        return parsed, 100, 0
+
+    monkeypatch.setattr("kb.sync.induct_chunk_with_retry", fake_induct)
+
+    driver = get_driver(settings)
+    init_schema(driver)
+    upsert_corpus(driver, CORPUS)
+    await run_sync(settings, "c-sync")
+
+    task = await run_induct(settings, "c-sync")
+    record = get_task(driver, task)
+    assert record["status"] == "done"
+    assert record["extract_discarded"] == 1
+    items = list_pending(driver, "c-sync")
+    props = [
+        i for i in items
+        if i["kind"] == "ontology_proposal" and i["payload"]["element_kind"] == "object_property"
+    ]
+    assert len(props) == 1
+    assert props[0]["payload"]["local_name"] == "serves"
+
+    delete_corpus(driver, "c-sync")
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+    client.delete_collection(collection_name("c-sync"))
+    driver.close()
+    client.close()
+
+
+@pytest.mark.integration
 async def test_run_sync_removes_deleted_asset_and_queues_violation(tmp_path, monkeypatch):
     (tmp_path / "acc").mkdir()
     first = tmp_path / "acc" / "a.md"

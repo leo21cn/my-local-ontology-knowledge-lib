@@ -328,13 +328,15 @@ def create_ontology_proposal(driver, corpus_id: str, element_kind: str, entry: d
             """
             MATCH (p:PendingItem {corpus_id: $corpus_id, kind: 'ontology_proposal', status: 'open'})
             WHERE p.payload CONTAINS $iri_fragment
-            RETURN p.pid AS pid LIMIT 1
+            RETURN p.payload AS payload LIMIT 5
             """,
             corpus_id=corpus_id,
             iri_fragment=f'"iri_preview": "{iri}"',
-        ).single()
-        if duplicate_open:
-            return ""
+        ).data()
+        for row in duplicate_open:
+            payload = json.loads(row["payload"]) if row["payload"] else {}
+            if payload.get("label") == label:
+                return ""
         if element_kind == "class":
             existing = session.run(
                 "MATCH (c:OntClass {corpus_id: $id, iri: $iri}) RETURN c.label_zh AS l", id=corpus_id, iri=iri

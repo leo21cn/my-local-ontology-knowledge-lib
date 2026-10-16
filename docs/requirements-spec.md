@@ -284,6 +284,7 @@
 3. 校验：`local_name` 匹配 `^[A-Za-z][A-Za-z0-9_]*$`；`label` 与 `definition` 非空；object_properties 的 domain/range 必须为同响应 classes 中的中文标签；datatype_properties 的 domain 同上，range 须在白名单内（中文类型名映射：字符串/文本→string、整数→integer、日期→date、日期时间→dateTime、布尔→boolean、小数/数值→decimal；`xsd:xxx` 形式原样接受）；不满足的输出条目丢弃并计入 `extract_discarded`。
 4. 落库：通过校验的候选以 kind=ontology_proposal 落待处理队列，payload 含 `element_kind`（class/object_property/datatype_property）、`local_name`、`label`、`definition`、`aliases`、`domain`、`range`、`iri_preview`（`http://kb.local/o/<prefix>#<local_name>`）与证据锚点。
 5. 确认语义：class 确认 → 经 OWL 2 RL 校验后写入 OntClass 并物化 TTL；object_property 确认 → domain/range 标签解析为本库已确认类（含同批先确认的类），解析失败或 IRI 冲突时保持待处理并附错误原因，成功则写入 OntObjProp 并物化 TTL；datatype_property 确认 → domain 标签解析规则同上，range 为白名单 xsd 类型，成功写入 OntDataProp 并物化 TTL。
+6. 生成期结构校验：归纳任务内先创建全部类提案，再创建属性提案；属性提案的 domain/range 标签必须落在「已确认类（标签+别名）∪ 队列中 open 类提案 ∪ 本任务已建类提案」的覆盖集合内，不满足的属性提案不创建并计入 `extract_discarded`；类提案的生成期去重仅跳过「同 IRI 且同标签」的 open 提案，同 IRI 不同标签照常入队。
 
 ### 6.6 LLM 实体与关系抽取
 

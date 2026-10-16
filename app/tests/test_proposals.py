@@ -286,6 +286,30 @@ def test_ontology_proposal_generation_skips_confirmed_duplicate(driver):
 
 
 @pytest.mark.integration
+def test_ontology_proposal_same_iri_different_label_not_skipped(driver):
+    from kb.proposals import create_ontology_proposal
+
+    anchor = {"rel_path": "n.md", "seq": 0, "sha256": "s-n"}
+    pid1 = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Domain", "label": "绩效域", "definition": "绩效域定义", "aliases": []},
+        anchor, "cprop",
+    )
+    pid2 = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Domain", "label": "安全域", "definition": "安全域定义", "aliases": []},
+        anchor, "cprop",
+    )
+    assert pid1 and pid2 and pid1 != pid2
+    pid3 = create_ontology_proposal(
+        driver, "c-prop", "class",
+        {"local_name": "Domain", "label": "绩效域", "definition": "绩效域定义", "aliases": []},
+        anchor, "cprop",
+    )
+    assert pid3 == ""
+
+
+@pytest.mark.integration
 def test_ontology_proposal_duplicate_auto_closed(driver):
     from kb.proposals import create_ontology_proposal
 

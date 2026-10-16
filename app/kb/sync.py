@@ -22,6 +22,7 @@ from kb.neo4j_store import (
     update_task,
 )
 from kb.proposals import (
+    _pending_class_proposals,
     create_ontology_proposal,
     create_pending,
     find_entities_by_anchor_rel_path,
@@ -482,9 +483,10 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
         failed_total = 0
         discarded_total = 0
         created_total = 0
+        parsed_groups: list[dict] = []
 
         async def induct_one(chunk: dict) -> None:
-            nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            nonlocal calls_total, tokens_total, failed_total, discarded_total
             async with semaphore:
                 try:
                     parsed, tokens, _ = await induct_chunk_with_retry(
@@ -503,18 +505,7 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
                     discarded_total += parsed["discarded"]
                     anchor = {"rel_path": chunk["asset_rel_path"], "seq": chunk["seq"],
                               "sha256": chunk["chunk_sha256"]}
-                    for entry in parsed["classes"]:
-                        create_ontology_proposal(driver, corpus_id, "class", entry,
-                                                 anchor, prefix)
-                        created_total += 1
-                    for entry in parsed["object_properties"]:
-                        create_ontology_proposal(driver, corpus_id, "object_property", entry,
-                                                 anchor, prefix)
-                        created_total += 1
-                    for entry in parsed["datatype_properties"]:
-                        create_ontology_proposal(driver, corpus_id, "datatype_property", entry,
-                                                 anchor, prefix)
-                        created_total += 1
+                    parsed_groups.append({"anchor": anchor, "parsed": parsed})
                 update_task(
                     driver, task_id,
                     status="running",
@@ -530,6 +521,33 @@ async def run_induct(settings: Settings, corpus_id: str, scope: str = "all",
                 )
 
         await asyncio.gather(*(induct_one(chunk) for chunk in chunks))
+
+        ontology = get_ontology(driver, corpus_id)
+        covered_labels: set[str] = set()
+        for cls in ontology["classes"]:
+            if cls.get("label_zh"):
+                covered_labels.add(cls["label_zh"])
+            covered_labels.update(cls.get("aliases", []))
+        covered_labels.update(_pending_class_proposals(driver, corpus_id).keys())
+        for group in parsed_groups:
+            for entry in group["parsed"]["classes"]:
+                pid = create_ontology_proposal(driver, corpus_id, "class", entry,
+                                               group["anchor"], prefix)
+                if pid:
+                    created_total += 1
+                    covered_labels.add(entry["label"])
+        for group in parsed_groups:
+            for kind, prop_entries in (("object_property", group["parsed"]["object_properties"]),
+                                       ("datatype_property", group["parsed"]["datatype_properties"])):
+                for entry in prop_entries:
+                    if entry["domain"] in covered_labels and (
+                        kind == "datatype_property" or entry["range"] in covered_labels
+                    ):
+                        if create_ontology_proposal(driver, corpus_id, kind, entry,
+                                                    group["anchor"], prefix):
+                            created_total += 1
+                    else:
+                        discarded_total += 1
 
         update_task(
             driver, task_id,
