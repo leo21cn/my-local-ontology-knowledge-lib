@@ -104,6 +104,7 @@ async def extract_chunk(settings: Settings, text: str, signature: dict) -> tuple
             ],
             temperature=0,
             max_tokens=800,
+            extra_body={"enable_thinking": False},
         )
     except Exception as exc:
         raise EmbedError(classify_error(exc), str(exc)) from exc
@@ -279,6 +280,7 @@ async def induct_chunk(settings: Settings, text: str) -> tuple[dict, int]:
                 {"role": "user", "content": build_induction_prompt(text)},
             ],
             temperature=0,
+            extra_body={"enable_thinking": False},
         )
     except Exception as exc:
         raise EmbedError(classify_error(exc), str(exc)) from exc
