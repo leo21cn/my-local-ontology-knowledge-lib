@@ -185,7 +185,7 @@ def parse_induction(raw: str, text: str) -> dict:
         local_name = str(item.get("local_name", ""))
         label = str(item.get("label", ""))
         definition = str(item.get("definition", ""))
-        if LOCAL_NAME_RE.match(local_name) and label and label in text and definition:
+        if LOCAL_NAME_RE.match(local_name) and label and definition:
             classes.append(
                 {
                     "local_name": local_name,

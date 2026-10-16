@@ -2,9 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from kb.auth import require_token
 from kb.deps import get_neo4j
-from kb.neo4j_store import get_task
+from kb.neo4j_store import get_task, list_tasks
 
 router = APIRouter(prefix="/api/v1/tasks", dependencies=[Depends(require_token)])
+
+
+@router.get("")
+async def read_tasks(corpus_id: str | None = None, kind: str | None = None,
+                     driver=Depends(get_neo4j)):
+    return {"data": list_tasks(driver, corpus_id, kind)}
 
 
 @router.get("/{task_id}")

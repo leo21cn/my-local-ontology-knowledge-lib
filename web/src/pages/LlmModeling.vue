@@ -64,7 +64,20 @@ const inducting = ref(false)
 let extractTimer = null
 let inductTimer = null
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  const tasks = await api.get(`/api/v1/tasks?corpus_id=${id}`)
+  const runningInduct = tasks.find((t) => t.kind === 'induct' && t.status === 'running')
+  const runningExtract = tasks.find((t) => t.kind === 'extract' && t.status === 'running')
+  if (runningInduct) {
+    inductTask.value = runningInduct
+    pollInduct(runningInduct.task_id)
+  }
+  if (runningExtract) {
+    extractTask.value = runningExtract
+    pollExtract(runningExtract.task_id)
+  }
+})
 onUnmounted(() => {
   extractTimer && clearInterval(extractTimer)
   inductTimer && clearInterval(inductTimer)

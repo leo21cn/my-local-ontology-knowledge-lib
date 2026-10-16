@@ -55,6 +55,15 @@ def test_parse_induction_keeps_valid_class():
     assert parsed["discarded"] == 0
 
 
+def test_parse_induction_class_label_need_not_appear_in_text():
+    parsed = parse_induction(
+        '{"classes":[{"local_name":"Charter","label":"项目章程","definition":"正式批准项目的文件","aliases":[]}],"object_properties":[],"datatype_properties":[]}',
+        "本章节介绍项目管理的一般原则。",
+    )
+    assert len(parsed["classes"]) == 1
+    assert parsed["discarded"] == 0
+
+
 def test_parse_induction_discards_invalid_local_name():
     parsed = parse_induction(
         '{"classes":[{"local_name":"金融产品","label":"金融产品","definition":"x"}],"object_properties":[]}',

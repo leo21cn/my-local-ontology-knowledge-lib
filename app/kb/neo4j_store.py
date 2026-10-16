@@ -250,6 +250,17 @@ def get_task(driver, task_id: str) -> dict | None:
     return dict(row["t"]) if row else None
 
 
+def list_tasks(driver, corpus_id: str | None = None, kind: str | None = None,
+               limit: int = 50) -> list[dict]:
+    query = "MATCH (t:OpsTask) WHERE ($cid IS NULL OR t.corpus_id = $cid)"
+    if kind:
+        query += " AND t.kind = $kind"
+    query += " RETURN t ORDER BY t.started_at DESC LIMIT $limit"
+    with driver.session() as session:
+        rows = session.run(query, cid=corpus_id, kind=kind, limit=limit).data()
+    return [dict(row["t"]) for row in rows]
+
+
 def new_pending_id() -> str:
     return uuid4().hex
 
