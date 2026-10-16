@@ -102,7 +102,7 @@ import { api } from '../api'
 const route = useRoute()
 const router = useRouter()
 const items = ref([])
-const kind = ref('proposal')
+const kind = ref('ontology_proposal')
 const highlightPid = ref('')
 const retypeDialog = ref(false)
 const retypeFor = ref(null)
