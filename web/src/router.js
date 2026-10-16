@@ -4,6 +4,7 @@ const routes = [
   { path: '/', redirect: '/corpora' },
   { path: '/corpora', name: 'corpora', component: () => import('./pages/Corpora.vue') },
   { path: '/corpora/:id', name: 'corpus', component: () => import('./pages/CorpusDetail.vue') },
+  { path: '/corpora/:id/llm', name: 'llm', component: () => import('./pages/LlmModeling.vue') },
   { path: '/corpora/:id/chunks', name: 'chunks', component: () => import('./pages/Chunks.vue') },
   { path: '/search', name: 'search', component: () => import('./pages/Search.vue') },
   { path: '/ontology/:id', name: 'ontology', component: () => import('./pages/Ontology.vue') },

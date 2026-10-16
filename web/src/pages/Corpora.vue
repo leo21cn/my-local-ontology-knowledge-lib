@@ -18,9 +18,10 @@
           <el-tag v-if="row.archived" type="warning">已归档</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="320">
+      <el-table-column label="操作" width="410">
         <template #default="{ row }">
           <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}`)">详情</el-button>
+          <el-button size="small" @click="$router.push(`/corpora/${row.corpus_id}/llm`)">LLM辅助建模</el-button>
           <el-button size="small" @click="$router.push(`/ontology/${row.corpus_id}`)">本体</el-button>
           <el-button size="small" @click="$router.push(`/entities/${row.corpus_id}`)">实体</el-button>
           <el-button size="small" @click="$router.push(`/graph/${row.corpus_id}`)">图谱</el-button>
