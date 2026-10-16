@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     kb_poll_interval_minutes: int = 30
     kb_corpus_root: str = "/corpus"
     kb_ontology_export_dir: str = "/ontology"
-    kb_extract_model: str = "qwen3.8-max"
-    kb_extract_price_per_1k_tokens: float = 0.00165
+    kb_extract_model: str = "qwen3.8-flash"
+    kb_extract_price_per_1k_tokens: float = 0.000113
     kb_extract_concurrency: int = 2
     kb_induct_sample_limit: int = 10
     qdrant_url: str = "http://127.0.0.1:6340"

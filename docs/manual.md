@@ -368,8 +368,8 @@ docker compose up -d worker api
 | KB_EMBED_BATCH | 10 | 单批嵌入条数（实测上限 10） |
 | KB_EMBED_PRICE_PER_1K_TOKENS | 0.0005 | 费用估算单价（官方价） |
 | KB_POLL_INTERVAL_MINUTES | 30 | 定时轮询间隔 |
-| KB_EXTRACT_MODEL | qwen3.8-max | LLM 知识建模模型（手动触发才计费） |
-| KB_EXTRACT_PRICE_PER_1K_TOKENS | 0.00165 | LLM 费用估算单价（实测） |
+| KB_EXTRACT_MODEL | qwen3.8-flash | LLM 知识建模模型（手动触发才计费） |
+| KB_EXTRACT_PRICE_PER_1K_TOKENS | 0.000113 | LLM 费用估算单价（输入价，实测） |
 | KB_EXTRACT_CONCURRENCY | 2 | LLM 调用并发上限 |
 | KB_INDUCT_SAMPLE_LIMIT | 20 | 本体归纳的切片采样上限 |
 | QDRANT_API_KEY / NEO4J_PASSWORD / REDIS_PASSWORD | — | 组件密码（随机生成，勿外泄） |
