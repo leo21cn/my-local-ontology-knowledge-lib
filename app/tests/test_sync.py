@@ -232,6 +232,46 @@ async def test_run_extract_skips_chunks_without_class_hint(tmp_path, monkeypatch
 
 
 @pytest.mark.integration
+async def test_run_extract_marks_chunks_and_skips_on_rerun(tmp_path, monkeypatch):
+    (tmp_path / "acc").mkdir()
+    (tmp_path / "acc" / "a.md").write_text("# 标题\n项目组甲的说明文字", encoding="utf-8")
+
+    settings = get_settings_for(tmp_path)
+    FakeEmbed(monkeypatch)
+
+    parsed = {
+        "entities": [{"term": "项目组甲", "class_iri": "http://kb.local/o/csync#Project"}],
+        "relations": [],
+        "discarded": 0,
+    }
+
+    async def fake_extract(settings, text, signature):
+        return parsed, 100, 0
+
+    monkeypatch.setattr("kb.sync.extract_chunk_with_retry", fake_extract)
+
+    driver = get_driver(settings)
+    init_schema(driver)
+    upsert_corpus(driver, CORPUS)
+    write_ont_class(driver, "c-sync", PROJECT_CLASS)
+    await run_sync(settings, "c-sync")
+
+    first = get_task(driver, await run_extract(settings, "c-sync"))
+    assert first["extract_calls"] == 1
+    second = get_task(driver, await run_extract(settings, "c-sync"))
+    assert second["extract_calls"] == 0
+    assert second["extract_skipped"] == 1
+    forced = get_task(driver, await run_extract(settings, "c-sync", force=True))
+    assert forced["extract_calls"] == 1
+
+    delete_corpus(driver, "c-sync")
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+    client.delete_collection(collection_name("c-sync"))
+    driver.close()
+    client.close()
+
+
+@pytest.mark.integration
 async def test_run_induct_creates_ontology_proposals(tmp_path, monkeypatch):
     (tmp_path / "acc").mkdir()
     (tmp_path / "acc" / "a.md").write_text("# 标题\n项目组甲的说明文字", encoding="utf-8")

@@ -45,7 +45,7 @@
       </el-button>
       <span v-if="extractEstimate !== null"> 切片 {{ extractEstimate.chunks }} 个，约 {{ extractEstimate.estimated_minutes }} 分钟</span>
       <span v-if="extractTask" style="margin-left: 10px">
-        任务 {{ extractTask.task_id.slice(0, 8) }}：{{ extractTask.status }}，调用 {{ extractTask.extract_calls }}，提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，失败 {{ extractTask.extract_failed }}
+        任务 {{ extractTask.task_id.slice(0, 8) }}：{{ extractTask.status }}，调用 {{ extractTask.extract_calls }}，跳过 {{ extractTask.extract_skipped }}，提案 {{ extractTask.proposals }}，丢弃 {{ extractTask.extract_discarded }}，失败 {{ extractTask.extract_failed }}
       </span>
     </div>
   </div>

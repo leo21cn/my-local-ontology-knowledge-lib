@@ -156,7 +156,7 @@ async def trigger_extract(corpus_id: str, request: Request, body: ExtractTrigger
     if not await _acquire_job_lock(request, "extract", corpus_id):
         raise _job_busy()
     job = await request.app.state.arq.enqueue_job(
-        "extract_job", corpus_id, trigger.scope, trigger.file_path
+        "extract_job", corpus_id, trigger.scope, trigger.file_path, trigger.force
     )
     if job is None:
         raise _job_busy()

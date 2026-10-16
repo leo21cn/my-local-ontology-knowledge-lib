@@ -23,6 +23,8 @@ from kb.neo4j_store import (
     get_ontology,
     init_schema,
     list_corpora,
+    list_extracted_chunk_keys,
+    mark_chunk_extracted,
     record_task,
     update_task,
 )
@@ -363,7 +365,8 @@ def _collect_chunks(client, corpus_id: str, scope: str, file_path: str | None) -
 
 
 async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
-                      file_path: str | None = None, task_id: str | None = None) -> str:
+                      file_path: str | None = None, task_id: str | None = None,
+                      force: bool = False) -> str:
     task_id = task_id or uuid4().hex
     driver = get_driver(settings)
     client = qdrant_client(settings)
@@ -375,6 +378,7 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
         record_task(driver, task_id, corpus_id, "running", kind="extract")
         signature = build_signature(get_ontology(driver, corpus_id))
         chunks = _collect_chunks(client, corpus_id, scope, file_path)
+        extracted_keys = set() if force else list_extracted_chunk_keys(driver, corpus_id)
 
         semaphore = asyncio.Semaphore(settings.kb_extract_concurrency)
         calls_total = 0
@@ -382,9 +386,15 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
         failed_total = 0
         discarded_total = 0
         created_total = 0
+        skipped_total = 0
 
         async def extract_one(chunk: dict) -> None:
             nonlocal calls_total, tokens_total, failed_total, discarded_total, created_total
+            nonlocal skipped_total
+            key = chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"])
+            if key in extracted_keys:
+                skipped_total += 1
+                return
             relevant = build_relevant_signature(signature, chunk["text"])
             if not relevant["classes"]:
                 logger.info("extract skip chunk without class hint: %s#%s",
@@ -399,7 +409,7 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
                     failed_total += 1
                     create_pending(
                         driver, corpus_id, "extract_failed",
-                        {"chunk_id": chunk_id(chunk["asset_rel_path"], chunk["chunk_sha256"]),
+                        {"chunk_id": key,
                          "error_code": exc.code.value, "message": exc.message[:200]},
                     )
                 else:
@@ -407,6 +417,7 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
                     tokens_total += tokens
                     discarded_total += parsed["discarded"]
                     created_total += generate_llm_proposals(driver, corpus_id, [chunk], [parsed])
+                    mark_chunk_extracted(driver, corpus_id, key)
                 update_task(
                     driver, task_id,
                     status="running",
@@ -416,13 +427,14 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
                     extract_tokens=tokens_total,
                     extract_failed=failed_total,
                     extract_discarded=discarded_total,
+                    extract_skipped=skipped_total,
                     extract_cost_estimate=round(
                         tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
                     ),
                 )
                 logger.info(
-                    "extract progress: %s/%s chunks, %s proposals, %s failed",
-                    calls_total + failed_total, len(chunks), created_total, failed_total,
+                    "extract progress: %s/%s chunks, %s proposals, %s failed, %s skipped",
+                    calls_total + failed_total, len(chunks), created_total, failed_total, skipped_total,
                 )
 
         await asyncio.gather(*(extract_one(chunk) for chunk in chunks))
@@ -436,6 +448,7 @@ async def run_extract(settings: Settings, corpus_id: str, scope: str = "all",
             extract_tokens=tokens_total,
             extract_failed=failed_total,
             extract_discarded=discarded_total,
+            extract_skipped=skipped_total,
             extract_cost_estimate=round(
                 tokens_total / 1000 * settings.kb_extract_price_per_1k_tokens, 6
             ),

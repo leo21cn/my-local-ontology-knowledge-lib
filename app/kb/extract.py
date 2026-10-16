@@ -103,6 +103,7 @@ async def extract_chunk(settings: Settings, text: str, signature: dict) -> tuple
                 {"role": "user", "content": build_prompt(signature, text)},
             ],
             temperature=0,
+            max_tokens=800,
         )
     except Exception as exc:
         raise EmbedError(classify_error(exc), str(exc)) from exc
@@ -148,7 +149,7 @@ def build_induction_prompt(text: str) -> str:
         '"datatype_properties":[{"local_name":"英文名","label":"中文标签","definition":"一句话定义",'
         '"domain":"所属类中文标签","range":"xsd类型"}]}；\n'
         "2. local_name 必须是合法的英文标识符；\n"
-        "3. label 与 definition 必填，definition 用一句话概括该概念；\n"
+        "3. label 与 definition 必填，definition 用一句话概括该概念，不超过 30 个字；\n"
         "4. object_properties 的 domain 与 range 必须引用 classes 中的中文标签；\n"
         "5. datatype_properties 的 domain 必须引用 classes 中的中文标签，range 只能取："
         "string（字符串/文本）、integer（整数）、date（日期）、dateTime（日期时间）、boolean（布尔）、decimal（小数/数值）；\n"

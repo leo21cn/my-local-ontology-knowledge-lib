@@ -15,6 +15,7 @@ CONSTRAINT_STATEMENTS = [
     "CREATE CONSTRAINT pending_pid IF NOT EXISTS FOR (n:PendingItem) REQUIRE n.pid IS UNIQUE",
     "CREATE CONSTRAINT opstask_id IF NOT EXISTS FOR (n:OpsTask) REQUIRE n.task_id IS UNIQUE",
     "CREATE CONSTRAINT anchor_uniq IF NOT EXISTS FOR (n:Anchor) REQUIRE (n.rel_path, n.seq, n.sha256) IS UNIQUE",
+    "CREATE CONSTRAINT extract_mark_uniq IF NOT EXISTS FOR (n:ExtractChunkMark) REQUIRE (n.corpus_id, n.chunk_id) IS UNIQUE",
 ]
 
 CORPUS_FIELDS = (
@@ -63,6 +64,7 @@ def delete_corpus(driver, corpus_id: str) -> None:
         "MATCH (n:OntDataProp {corpus_id: $id}) DELETE n",
         "MATCH (n:OntVersion {corpus_id: $id}) DELETE n",
         "MATCH (n:PendingItem {corpus_id: $id}) DELETE n",
+        "MATCH (n:ExtractChunkMark {corpus_id: $id}) DELETE n",
         "MATCH (n:OpsTask {corpus_id: $id}) DELETE n",
         "MATCH (c:Corpus {corpus_id: $id}) DELETE c",
     ]
@@ -230,6 +232,7 @@ def record_task(driver, task_id: str, corpus_id: str, status: str, kind: str = "
                 t.tokens = 0, t.embed_retries = 0, t.cost_estimate = 0.0, t.proposals = 0,
                 t.extract_calls = 0, t.extract_tokens = 0, t.extract_failed = 0,
                 t.extract_discarded = 0, t.extract_cost_estimate = 0.0,
+                t.extract_skipped = 0,
                 t.error_code = ''
             """,
             task_id=task_id, corpus_id=corpus_id, kind=kind, status=status, now=time.time(),
@@ -263,6 +266,22 @@ def list_tasks(driver, corpus_id: str | None = None, kind: str | None = None,
 
 def new_pending_id() -> str:
     return uuid4().hex
+
+
+def mark_chunk_extracted(driver, corpus_id: str, chunk_key: str) -> None:
+    with driver.session() as session:
+        session.run(
+            "MERGE (m:ExtractChunkMark {corpus_id: $cid, chunk_id: $key}) SET m.extracted_at = timestamp()",
+            cid=corpus_id, key=chunk_key,
+        )
+
+
+def list_extracted_chunk_keys(driver, corpus_id: str) -> set[str]:
+    with driver.session() as session:
+        rows = session.run(
+            "MATCH (m:ExtractChunkMark {corpus_id: $cid}) RETURN m.chunk_id AS key", cid=corpus_id
+        ).data()
+    return {row["key"] for row in rows}
 
 
 def delete_ont_class(driver, corpus_id: str, iri: str) -> list[dict]:

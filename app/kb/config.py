@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     kb_extract_model: str = "qwen3.8-max"
     kb_extract_price_per_1k_tokens: float = 0.00165
     kb_extract_concurrency: int = 2
-    kb_induct_sample_limit: int = 20
+    kb_induct_sample_limit: int = 10
     qdrant_url: str = "http://127.0.0.1:6340"
     qdrant_api_key: str = ""
     neo4j_uri: str = "bolt://127.0.0.1:7687"

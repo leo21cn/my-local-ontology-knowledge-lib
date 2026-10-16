@@ -34,6 +34,7 @@ class RebuildTrigger(BaseModel):
 class ExtractTrigger(BaseModel):
     scope: str = "all"
     file_path: str | None = None
+    force: bool = False
 
 
 class EditPending(BaseModel):

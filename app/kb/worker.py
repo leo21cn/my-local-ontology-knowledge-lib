@@ -38,10 +38,11 @@ async def rebuild_job(ctx, corpus_id: str, mode: str) -> str:
 
 
 async def extract_job(ctx, corpus_id: str, scope: str = "all",
-                      file_path: str | None = None) -> str:
+                      file_path: str | None = None, force: bool = False) -> str:
     try:
         return await sync_module.run_extract(
-            get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id")
+            get_settings(), corpus_id, scope, file_path, task_id=ctx.get("job_id"),
+            force=force,
         )
     finally:
         await _release(ctx, "extract", corpus_id)
