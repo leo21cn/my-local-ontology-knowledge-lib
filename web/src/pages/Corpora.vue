@@ -109,8 +109,8 @@ async function initSortable() {
         ElMessage.success('顺序已保存')
       } catch (err) {
         ElMessage.error(err.message)
-        await load()
       }
+      await load()
     }
   })
 }
