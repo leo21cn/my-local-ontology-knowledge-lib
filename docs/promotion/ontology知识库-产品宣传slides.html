@@ -94,7 +94,7 @@
         <div class="kicker">ONTOLOGY-ENHANCED-AI-KNOWLEDGE-LIB</div>
         <h1>利用本体能力增强的<br/>AI赋能知识库系统</h1>
         <p class="lead">把散落的 Markdown 资产，升级为「可理解概念、可追溯原文、可被智能体消费」的知识底座：权威源在上、派生索引在下、本体在中间、人在环中裁决。</p>
-        <p class="foot">产品宣传 · 2026-10　|　单机 Docker 部署　|　检索 / 本体 / 实体图谱 / LLM 辅助建模</p>
+        <p class="foot">产品宣传 · 2026-10　|　小范围起步 · Docker 部署　|　检索 / 本体 / 实体图谱 / LLM 辅助建模</p>
       </div>
       <div class="hero">
         <img src="assets/hero-knowledge-graph.svg" alt="本体-类-属性-实体-锚点 知识网络示意" />
@@ -216,10 +216,11 @@
     <h2>企业实施步骤（大体）</h2>
     <div class="grid cols-2" style="grid-auto-rows: min-content">
       <div class="card"><div class="num">第 1 步</div><h3>定资产与边界</h3><p>盘点 Markdown 知识资产，划定语料库目录（一个库 = 一个子目录）。</p></div>
-      <div class="card"><div class="num">第 2 步</div><h3>单机部署</h3><p>Docker Compose 一键起栈（Qdrant/Neo4j/Redis/API/Worker/Web），配置密钥与端口。</p></div>
+      <div class="card"><div class="num">第 2 步</div><h3>小范围部署</h3><p>先在单机/开发环境用 Docker Compose 起栈（Qdrant/Neo4j/Redis/API/Worker/Web），配置密钥与端口，验证检索与建模闭环。</p></div>
       <div class="card"><div class="num">第 3 步</div><h3>建库同步</h3><p>新建语料库 → 全量同步入索引；此后增量同步/定时轮询自动跟进变更。</p></div>
       <div class="card"><div class="num">第 4 步</div><h3>建模与裁决</h3><p>LLM 归纳本体 → 确认 → 抽取实体与关系 → 确认；重复迭代直至覆盖满意。</p></div>
       <div class="card"><div class="num">第 5 步</div><h3>接入消费方</h3><p>Web 检索验证 → Dify 契约 / MCP / 外部智能体挂接（不导入、实时访问、显式降级）。</p></div>
+      <div class="card"><div class="num">第 6 步</div><h3>逐步加大部署</h3><p>以语料库为单位扩容：逐域同步与建模，观察成本与质量后扩大并发与范围，再把 API 开放给更多消费方。</p></div>
     </div>
     <div class="shots">
       <div class="shot">
