@@ -218,16 +218,6 @@
   </section>
 
   <section class="slide">
-    <div class="kicker">成本</div>
-    <h2>LLM 成本与质量工程</h2>
-    <div class="grid cols-2">
-      <div class="card"><div class="num">曾经</div><h3>思考模式 + 全量签名</h3><p>单次调用 2~2.5 万 token，超时失败的服务端计费难控，两天烧掉约 200 元。</p></div>
-      <div class="card"><div class="num">现在</div><h3>flash + 关思考 + 签名裁剪</h3><p>单次约 1.1K token、十余秒；千片级抽取总费用数元级，失败切片只补差额。</p></div>
-    </div>
-    <p class="lead">教训：模型的「默认聪明」是计费的——机械 JSON 任务不需要思考链；签名只送与切片相关的要素；超时失败也要当作成本来管。</p>
-  </section>
-
-  <section class="slide">
     <div class="kicker">落地</div>
     <h2>企业实施步骤（大体）</h2>
     <div class="grid cols-2" style="grid-auto-rows: min-content">
