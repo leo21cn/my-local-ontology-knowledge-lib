@@ -125,7 +125,7 @@
     <div class="grid cols-3">
       <div class="card"><div class="num">01</div><h3>只认字面，不认概念</h3><p>查「结算周期」找不到写「对账频率」的文档；查人带不出他负责的项目。</p></div>
       <div class="card"><div class="num">02</div><h3>资产散落，无统一索引和AI入口</h3><p>Markdown 只是文件，没有「库—文档—切片」可追溯结构，也没有AI可编程的统一入口。</p></div>
-      <div class="card"><div class="num">03</div><h3>变更一致性</h3><p>文件被改、被删、被移动后，派生索引与实体必须跟得上，否则检索在说谎。</p></div>
+      <div class="card"><div class="num">03</div><h3>知识变更一致性</h3><p>传统依托知识拷贝做为底层机制的传统知识管理，在文件被改、被删、被移动后，很难保障知识一致性，及时性，从而导致检索知识过期问题。</p></div>
       <div class="card"><div class="num">04</div><h3>本体建模门槛高</h3><p>手工建类、属性、domain/range 是专家活，普通团队需要一条低成本路径。</p></div>
       <div class="card"><div class="num">05</div><h3>LLM 的代价</h3><p>token 膨胀、慢响应超时、幻觉输出——省成本、抗失败、防幻觉必须工程化。</p></div>
       <div class="card"><div class="num">06</div><h3>被外部消费</h3><p>Web、Dify、MCP、自研应用都要用同一份检索逻辑、同一个契约接入。</p></div>
@@ -150,9 +150,9 @@
     <table>
       <tr><th>不同点</th><th>解决哪些问题</th><th>对应关系</th></tr>
       <tr><td>D1 双索引（向量 + 本体图谱）</td><td>P1 不认概念 / P6 被消费</td><td>本体承载概念层，关系扩展把「带出关联实体」变成检索能力</td></tr>
-      <tr><td>D2 锚点回源</td><td>P2 无结构 / P3 变更一致性</td><td>锚点把派生物与权威源绑定，改/删可检测、命中可核对</td></tr>
+      <tr><td>D2 锚点回源</td><td>P2 无结构 / P3 知识变更一致性</td><td>锚点把派生物与权威源绑定，改/删可检测、命中可核对</td></tr>
       <tr><td>D3 两阶段建模 + 裁决</td><td>P4 建模门槛 / P5 LLM 代价</td><td>机器归纳候选、人来确认，幻觉在入口被校验丢弃</td></tr>
-      <tr><td>D4 删除与冲突显式化</td><td>P3 变更一致性</td><td>任何影响实例的变更都落到待处理队列，可追溯可裁决</td></tr>
+      <tr><td>D4 删除与冲突显式化</td><td>P3 知识变更一致性</td><td>任何影响实例的变更都落到待处理队列，可追溯可裁决</td></tr>
       <tr><td>D5 智能体契约</td><td>P6 被外部消费</td><td>一套编排三入口，外部系统零导入实时借力</td></tr>
     </table>
   </section>
