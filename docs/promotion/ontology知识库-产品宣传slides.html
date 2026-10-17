@@ -43,6 +43,7 @@
   h2 { font-size: clamp(22px, 3vw, 34px); font-weight: 700; margin-bottom: 4vh; }
   h3 { font-size: 17px; margin-bottom: 8px; }
   .lead { color: var(--sub); font-size: clamp(15px, 1.5vw, 18px); margin-top: 16px; max-width: 46em; }
+  .lead.full { max-width: none; }
   .grid { display: grid; gap: 16px; }
   .cols-2 { grid-template-columns: repeat(2, 1fr); }
   .cols-3 { grid-template-columns: repeat(3, 1fr); }
@@ -190,7 +191,7 @@
         <p>签名只取标签命中切片的类；实体名必须逐字在正文、IRI 必须在本体签名内 → 提案 → 确认后成为实体与关系，参与检索扩展。</p>
       </div>
     </div>
-    <p class="lead">生成期结构校验（属性引用缺失类不进入队列）+ 确认期冲突提示（重复自动关闭、缺失标签列出可选并跳转定位）——机器产出、人工拍板。</p>
+    <p class="lead full">生成期结构校验（属性引用缺失类不进入队列）+ 确认期冲突提示（重复自动关闭、缺失标签列出可选并跳转定位）——机器产出、人工拍板。</p>
     <div class="shots">
       <div class="shot">
         <img src="assets/shot-ontology.png" alt="本体页三个 Tab" />
