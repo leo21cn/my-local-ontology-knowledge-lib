@@ -72,6 +72,19 @@
   .shots .shot { flex: 1; min-width: 0; }
   .shots .shot img { width: 100%; max-height: 32vh; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 3px 12px rgba(31,35,41,.07); }
   .shots .shot .cap { text-align: center; color: var(--sub); font-size: 12px; margin-top: 6px; }
+  .code-link {
+    display: inline-block;
+    background: var(--soft);
+    color: var(--accent);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: clamp(14px, 1.7vw, 20px);
+    padding: 14px 24px;
+    border: 1px solid #c7d4f5;
+    border-radius: 12px;
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .code-link:hover { background: #e0e7ff; }
   .nav { position: fixed; right: 24px; bottom: 20px; display: flex; gap: 10px; align-items: center; }
   .nav button {
     width: 40px; height: 40px; border-radius: 50%;
@@ -256,6 +269,18 @@
       </div>
     </div>
     <p class="foot">让每一次检索都听得懂概念、回得到原文、对得起智能体。</p>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">OPEN SOURCE</div>
+    <h2>源代码</h2>
+    <p class="lead">全部实现、设计文档与验收记录均已开源：</p>
+    <p style="margin-top: 3vh">
+      <a class="code-link" href="https://github.com/leo21cn/my-local-ontology-knowledge-lib" target="_blank" rel="noopener">
+        https://github.com/leo21cn/my-local-ontology-knowledge-lib.git
+      </a>
+    </p>
+    <p class="foot">FastAPI · Qdrant · Neo4j · arq · Vue 3　|　MIT 风格工程实践 · 单仓可部署</p>
   </section>
 
 </div>
