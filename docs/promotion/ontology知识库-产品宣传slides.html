@@ -89,6 +89,17 @@
     word-break: break-all;
   }
   .code-link:hover { background: #e0e7ff; }
+  .mermaid {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    justify-content: center;
+    max-height: 34vh;
+    overflow: hidden;
+    margin-bottom: 2.5vh;
+  }
   .nav { position: fixed; right: 24px; bottom: 20px; display: flex; gap: 10px; align-items: center; }
   .nav button {
     width: 40px; height: 40px; border-radius: 50%;
@@ -143,21 +154,21 @@
   <section class="slide">
     <div class="kicker">架构</div>
     <h2>技术架构：三层 + 双索引</h2>
-    <div class="flow">
-      <div class="box"><b>权威源</b><span>Markdown 目录（只读）</span></div>
-      <span class="arrow">→</span>
-      <div class="box"><b>切片 &amp; 嵌入</b><span>标题层级切块 · text-embedding-v4</span></div>
-      <span class="arrow">→</span>
-      <div class="box"><b>检索索引</b><span>Qdrant（向量 + 载荷）</span></div>
-      <span class="arrow">→</span>
-      <div class="box"><b>语义索引</b><span>Neo4j（本体 + 实体图谱）</span></div>
+    <div class="mermaid">
+flowchart TB
+    A["数据湖知识文档目录<br/>（推荐知识归档用 Markdown 格式）"] --> B["切片 &amp; 嵌入<br/>（text-embedding-v4）"]
+    B --> C["检索索引 Qdrant<br/>（向量 + 载荷）"]
+    C --> D["语义索引 Neo4j<br/>（本体 + 实体图谱）"]
+    D --> E["服务层 FastAPI + arq<br/>（同步 / 重建 / 归纳 / 抽取）"]
+    E --> F["消费层<br/>Web · Dify · MCP · 智能体"]
+    G["可配置 LLM<br/>（如 Qwen3.8-flash）"] --> E
     </div>
-    <div class="grid cols-3" style="margin-top: 3vh">
+    <div class="grid cols-3">
       <div class="card"><h3>服务层</h3><p>FastAPI + arq 任务队列（Redis）；同步/重建/归纳/抽取均为幂等任务，同库同类单飞。</p></div>
       <div class="card"><h3>消费层</h3><p>Web 界面 · Dify 外部知识库契约 · MCP 工具 · 自研 HTTP 调用，共用同一检索编排。</p></div>
-      <div class="card"><h3>建模层</h3><p>qwen3.8-flash 归纳与抽取（关思考、签名裁剪、断点续抽）；OWL 2 RL 校验 + TTL 导入导出。</p></div>
+      <div class="card"><h3>建模层</h3><p>可配置LLM（如Qwen3.8-flash）归纳与抽取；OWL 2 RL 校验 + TTL 导入导出。</p></div>
     </div>
-    <p class="foot">全部组件单机 Docker 部署，端口仅绑定 127.0.0.1；密钥只经环境变量注入。</p>
+    <p class="foot">组件容器化部署、小范围起步；密钥只经环境变量注入。</p>
   </section>
 
   <section class="slide">
@@ -279,6 +290,23 @@
   <button id="next">›</button>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  if (window.mermaid) {
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#eef2ff',
+        primaryBorderColor: '#2563eb',
+        primaryTextColor: '#1f2329',
+        lineColor: '#93c5fd',
+        fontSize: '14px',
+        fontFamily: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif'
+      }
+    });
+  }
+</script>
 <script>
   const slides = Array.from(document.querySelectorAll('.slide'));
   const dotsBox = document.getElementById('dots');
