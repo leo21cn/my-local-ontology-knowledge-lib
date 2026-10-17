@@ -102,6 +102,16 @@
     overflow: hidden;
     margin-bottom: 2.5vh;
   }
+  .arch-img {
+    display: block;
+    margin: 0 auto 2.5vh;
+    max-height: 44vh;
+    max-width: 90%;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px;
+  }
   .nav { position: fixed; right: 24px; bottom: 20px; display: flex; gap: 10px; align-items: center; }
   .nav button {
     width: 40px; height: 40px; border-radius: 50%;
@@ -156,15 +166,7 @@
   <section class="slide">
     <div class="kicker">架构</div>
     <h2>技术架构：三层 + 双索引</h2>
-    <div class="mermaid">
-flowchart TB
-    A["数据湖知识文档目录<br/>（推荐知识归档用 Markdown 格式）"] --> B["切片 &amp; 嵌入<br/>（text-embedding-v4）"]
-    B --> C["检索索引 Qdrant<br/>（向量 + 载荷）"]
-    C --> D["语义索引 Neo4j<br/>（本体 + 实体图谱）"]
-    D --> E["服务层 FastAPI + arq<br/>（同步 / 重建 / 归纳 / 抽取）"]
-    E --> F["消费层<br/>Web · Dify · MCP · 智能体"]
-    G["可配置 LLM<br/>（如 Qwen3.8-flash）"] --> E
-    </div>
+    <img class="arch-img" src="assets/arch-diagram.svg" alt="技术架构流程图" />
     <div class="grid cols-3">
       <div class="card"><h3>服务层</h3><p>FastAPI + arq 任务队列（Redis）；同步/重建/归纳/抽取均为幂等任务，同库同类单飞。</p></div>
       <div class="card"><h3>消费层</h3><p>Web 界面 · Dify 外部知识库契约 · MCP 工具 · 自研 HTTP 调用，共用同一检索编排。</p></div>
@@ -292,50 +294,11 @@ flowchart TB
   <button id="next">›</button>
 </div>
 
-<script src="assets/mermaid.min.js"></script>
 <script>
   const slides = Array.from(document.querySelectorAll('.slide'));
   const dotsBox = document.getElementById('dots');
   const pageEl = document.getElementById('page');
   let current = 0;
-  let mermaidDone = false;
-  const archIndex = slides.findIndex((s) => s.querySelector('.mermaid'));
-  const FALLBACK = `
-    <div class="flow">
-      <div class="box"><b>数据湖知识文档目录</b><span>推荐 Markdown 归档</span></div><span class="arrow">→</span>
-      <div class="box"><b>切片 &amp; 嵌入</b><span>text-embedding-v4</span></div><span class="arrow">→</span>
-      <div class="box"><b>检索索引 Qdrant</b><span>向量 + 载荷</span></div><span class="arrow">→</span>
-      <div class="box"><b>语义索引 Neo4j</b><span>本体 + 实体图谱</span></div><span class="arrow">→</span>
-      <div class="box"><b>服务层 FastAPI + arq</b><span>同步 / 重建 / 归纳 / 抽取</span></div>
-    </div>`;
-
-  function ensureMermaid() {
-    if (mermaidDone) return;
-    mermaidDone = true;
-    const el = document.querySelector('.mermaid');
-    if (!el) return;
-    if (window.mermaid) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'base',
-        themeVariables: {
-          primaryColor: '#eef2ff',
-          primaryBorderColor: '#2563eb',
-          primaryTextColor: '#1f2329',
-          lineColor: '#93c5fd',
-          fontSize: '14px',
-          fontFamily: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif'
-        }
-      });
-      mermaid.run({ nodes: [el] }).catch(() => {
-        el.innerHTML = FALLBACK;
-        el.classList.add('fallback');
-      });
-    } else {
-      el.innerHTML = FALLBACK;
-      el.classList.add('fallback');
-    }
-  }
 
   slides.forEach((_, i) => {
     const dot = document.createElement('span');
@@ -348,7 +311,6 @@ flowchart TB
     slides.forEach((s, k) => s.classList.toggle('active', k === current));
     dotsBox.querySelectorAll('span').forEach((d, k) => d.classList.toggle('on', k === current));
     pageEl.textContent = `${current + 1} / ${slides.length}`;
-    if (archIndex === current) ensureMermaid();
   }
   document.getElementById('prev').addEventListener('click', () => go(current - 1));
   document.getElementById('next').addEventListener('click', () => go(current + 1));
