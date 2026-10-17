@@ -89,6 +89,8 @@
     word-break: break-all;
   }
   .code-link:hover { background: #e0e7ff; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .mermaid.fallback { display: block; }
   .mermaid {
     background: var(--card);
     border: 1px solid var(--line);
@@ -290,28 +292,50 @@ flowchart TB
   <button id="next">›</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
-<script>
-  if (window.mermaid) {
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'base',
-      themeVariables: {
-        primaryColor: '#eef2ff',
-        primaryBorderColor: '#2563eb',
-        primaryTextColor: '#1f2329',
-        lineColor: '#93c5fd',
-        fontSize: '14px',
-        fontFamily: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif'
-      }
-    });
-  }
-</script>
+<script src="assets/mermaid.min.js"></script>
 <script>
   const slides = Array.from(document.querySelectorAll('.slide'));
   const dotsBox = document.getElementById('dots');
   const pageEl = document.getElementById('page');
   let current = 0;
+  let mermaidDone = false;
+  const archIndex = slides.findIndex((s) => s.querySelector('.mermaid'));
+  const FALLBACK = `
+    <div class="flow">
+      <div class="box"><b>数据湖知识文档目录</b><span>推荐 Markdown 归档</span></div><span class="arrow">→</span>
+      <div class="box"><b>切片 &amp; 嵌入</b><span>text-embedding-v4</span></div><span class="arrow">→</span>
+      <div class="box"><b>检索索引 Qdrant</b><span>向量 + 载荷</span></div><span class="arrow">→</span>
+      <div class="box"><b>语义索引 Neo4j</b><span>本体 + 实体图谱</span></div><span class="arrow">→</span>
+      <div class="box"><b>服务层 FastAPI + arq</b><span>同步 / 重建 / 归纳 / 抽取</span></div>
+    </div>`;
+
+  function ensureMermaid() {
+    if (mermaidDone) return;
+    mermaidDone = true;
+    const el = document.querySelector('.mermaid');
+    if (!el) return;
+    if (window.mermaid) {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'base',
+        themeVariables: {
+          primaryColor: '#eef2ff',
+          primaryBorderColor: '#2563eb',
+          primaryTextColor: '#1f2329',
+          lineColor: '#93c5fd',
+          fontSize: '14px',
+          fontFamily: '-apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif'
+        }
+      });
+      mermaid.run({ nodes: [el] }).catch(() => {
+        el.innerHTML = FALLBACK;
+        el.classList.add('fallback');
+      });
+    } else {
+      el.innerHTML = FALLBACK;
+      el.classList.add('fallback');
+    }
+  }
 
   slides.forEach((_, i) => {
     const dot = document.createElement('span');
@@ -324,6 +348,7 @@ flowchart TB
     slides.forEach((s, k) => s.classList.toggle('active', k === current));
     dotsBox.querySelectorAll('span').forEach((d, k) => d.classList.toggle('on', k === current));
     pageEl.textContent = `${current + 1} / ${slides.length}`;
+    if (archIndex === current) ensureMermaid();
   }
   document.getElementById('prev').addEventListener('click', () => go(current - 1));
   document.getElementById('next').addEventListener('click', () => go(current + 1));
