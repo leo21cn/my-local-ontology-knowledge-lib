@@ -75,7 +75,7 @@
   .hero img { width: 100%; max-height: 58vh; object-fit: contain; border-radius: 16px; }
   .shots { display: flex; gap: 16px; margin-top: 3vh; }
   .shots .shot { flex: 1; min-width: 0; }
-  .shots .shot img { width: 100%; max-height: 32vh; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 3px 12px rgba(31,35,41,.07); }
+  .shots .shot img { width: 100%; max-height: 22vh; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 3px 12px rgba(31,35,41,.07); }
   .shots .shot .cap { text-align: center; color: var(--sub); font-size: 12px; margin-top: 6px; }
   .code-link {
     display: inline-block;
@@ -219,8 +219,8 @@
 
   <section class="slide">
     <div class="kicker">落地</div>
-    <h2>企业实施步骤（大体）</h2>
-    <div class="grid cols-2" style="grid-auto-rows: min-content">
+    <h2>企业实施大体步骤</h2>
+    <div class="grid cols-3">
       <div class="card"><div class="num">第 1 步</div><h3>定资产与边界</h3><p>盘点 Markdown 知识资产，划定语料库目录（一个库 = 一个子目录）。</p></div>
       <div class="card"><div class="num">第 2 步</div><h3>小范围部署</h3><p>先在单机/开发环境用 Docker Compose 起栈（Qdrant/Neo4j/Redis/API/Worker/Web），配置密钥与端口，验证检索与建模闭环。</p></div>
       <div class="card"><div class="num">第 3 步</div><h3>建库同步</h3><p>新建语料库 → 全量同步入索引；此后增量同步/定时轮询自动跟进变更。</p></div>
