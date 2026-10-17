@@ -12,3 +12,9 @@ backups/
 web/node_modules/
 web/dist/
 ontology/*.ttl.tmp
+ontology/*.ttl
+ontology-backup-*.ttl
+knowledge-lib-base-folder/ba-knowledge/
+knowledge-lib-base-folder/pm-knowledge/
+knowledge-lib-base-folder/sa-knowledge/
+scripts/acceptance/empty.ttl
