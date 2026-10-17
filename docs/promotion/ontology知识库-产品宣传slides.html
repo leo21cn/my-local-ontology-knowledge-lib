@@ -64,6 +64,14 @@
   .flow .box span { color: var(--sub); font-size: 12px; }
   .flow .arrow { color: var(--accent); font-size: 20px; }
   .foot { margin-top: 5vh; color: var(--sub); font-size: 13px; }
+  .cover-row { display: flex; gap: 48px; align-items: center; }
+  .cover-row .left { flex: 1; }
+  .hero { flex: 1; }
+  .hero img { width: 100%; max-height: 58vh; object-fit: contain; border-radius: 16px; }
+  .shots { display: flex; gap: 16px; margin-top: 3vh; }
+  .shots .shot { flex: 1; min-width: 0; }
+  .shots .shot img { width: 100%; max-height: 32vh; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 3px 12px rgba(31,35,41,.07); }
+  .shots .shot .cap { text-align: center; color: var(--sub); font-size: 12px; margin-top: 6px; }
   .nav { position: fixed; right: 24px; bottom: 20px; display: flex; gap: 10px; align-items: center; }
   .nav button {
     width: 40px; height: 40px; border-radius: 50%;
@@ -81,10 +89,17 @@
 <div class="stage">
 
   <section class="slide active">
-    <div class="kicker">MY-CENTER-KNOWLEDGE-LIB</div>
-    <h1>利用本体能力增强的<br/>AI赋能知识库系统</h1>
-    <p class="lead">把散落的 Markdown 资产，升级为「可理解概念、可追溯原文、可被智能体消费」的知识底座：权威源在上、派生索引在下、本体在中间、人在环中裁决。</p>
-    <p class="foot">产品宣传 · 2026-10　|　单机 Docker 部署　|　检索 / 本体 / 实体图谱 / LLM 辅助建模</p>
+    <div class="cover-row">
+      <div class="left">
+        <div class="kicker">MY-CENTER-KNOWLEDGE-LIB</div>
+        <h1>利用本体能力增强的<br/>AI赋能知识库系统</h1>
+        <p class="lead">把散落的 Markdown 资产，升级为「可理解概念、可追溯原文、可被智能体消费」的知识底座：权威源在上、派生索引在下、本体在中间、人在环中裁决。</p>
+        <p class="foot">产品宣传 · 2026-10　|　单机 Docker 部署　|　检索 / 本体 / 实体图谱 / LLM 辅助建模</p>
+      </div>
+      <div class="hero">
+        <img src="assets/hero-knowledge-graph.svg" alt="本体-类-属性-实体-锚点 知识网络示意" />
+      </div>
+    </div>
   </section>
 
   <section class="slide">
@@ -161,6 +176,16 @@
       </div>
     </div>
     <p class="lead">生成期结构校验（属性引用缺失类不进入队列）+ 确认期冲突提示（重复自动关闭、缺失标签列出可选并跳转定位）——机器产出、人工拍板。</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="assets/shot-ontology.png" alt="本体页三个 Tab" />
+        <div class="cap">本体页：类 / 对象属性 / 数据属性</div>
+      </div>
+      <div class="shot">
+        <img src="assets/shot-llm.png" alt="LLM 辅助建模页" />
+        <div class="cap">LLM 辅助建模：归纳本体 → 抽取实体与关系</div>
+      </div>
+    </div>
   </section>
 
   <section class="slide">
@@ -196,6 +221,16 @@
       <div class="card"><div class="num">第 4 步</div><h3>建模与裁决</h3><p>LLM 归纳本体 → 确认 → 抽取实体与关系 → 确认；重复迭代直至覆盖满意。</p></div>
       <div class="card"><div class="num">第 5 步</div><h3>接入消费方</h3><p>Web 检索验证 → Dify 契约 / MCP / 外部智能体挂接（不导入、实时访问、显式降级）。</p></div>
     </div>
+    <div class="shots">
+      <div class="shot">
+        <img src="assets/shot-corpora.png" alt="库管理页" />
+        <div class="cap">库管理：建库、同步、归档、拖拽排序</div>
+      </div>
+      <div class="shot">
+        <img src="assets/shot-search.png" alt="检索测试页" />
+        <div class="cap">检索测试：命中片段与锚点回源</div>
+      </div>
+    </div>
   </section>
 
   <section class="slide">
@@ -209,6 +244,16 @@
       <tr><td>建模成本</td><td>qwen3.8-flash：单次约 1.1K token，千片级抽取数元级</td></tr>
       <tr><td>被引用方</td><td>火花会（Sparkwave）以「外部知识库组合检索」挂接本库检索 API</td></tr>
     </table>
+    <div class="shots">
+      <div class="shot">
+        <img src="assets/shot-graph.png" alt="图谱页全部视图" />
+        <div class="cap">图谱：全库实体与关系，点击逐级下钻</div>
+      </div>
+      <div class="shot">
+        <img src="assets/shot-entities.png" alt="实体页" />
+        <div class="cap">实体页：行展开查看关系明细</div>
+      </div>
+    </div>
     <p class="foot">让每一次检索都听得懂概念、回得到原文、对得起智能体。</p>
   </section>
 

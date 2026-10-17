@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#eef2ff"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="760" rx="24" fill="url(#bg)"/>
+
+  <g stroke="#c7d4f5" stroke-width="2">
+    <line x1="600" y1="360" x2="240" y2="220"/>
+    <line x1="600" y1="360" x2="300" y2="520"/>
+    <line x1="600" y1="360" x2="520" y2="120"/>
+    <line x1="600" y1="360" x2="760" y2="150"/>
+    <line x1="600" y1="360" x2="930" y2="240"/>
+    <line x1="600" y1="360" x2="980" y2="520"/>
+    <line x1="600" y1="360" x2="860" y2="620"/>
+    <line x1="240" y1="220" x2="330" y2="100"/>
+    <line x1="930" y1="240" x2="1060" y2="140"/>
+    <line x1="980" y1="520" x2="1100" y2="620"/>
+    <line x1="300" y1="520" x2="150" y2="620"/>
+  </g>
+
+  <g stroke="#2563eb" stroke-width="3">
+    <line x1="600" y1="360" x2="620" y2="620"/>
+  </g>
+
+  <g font-size="20" text-anchor="middle">
+    <!-- central hub -->
+    <circle cx="600" cy="360" r="72" fill="#2563eb"/>
+    <text x="600" y="352" fill="#ffffff" font-size="26" font-weight="700">本体</text>
+    <text x="600" y="380" fill="#dbeafe" font-size="15">Ontology</text>
+
+    <!-- class nodes -->
+    <circle cx="240" cy="220" r="44" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <text x="240" y="227" fill="#1f2329" font-weight="600">类</text>
+    <circle cx="330" cy="100" r="34" fill="#ffffff" stroke="#93c5fd" stroke-width="3"/>
+    <text x="330" y="107" fill="#1f2329" font-size="16">子类</text>
+    <circle cx="520" cy="120" r="40" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <text x="520" y="127" fill="#1f2329" font-weight="600">属性</text>
+    <circle cx="760" cy="150" r="40" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <text x="760" y="157" fill="#1f2329" font-weight="600">属性</text>
+    <circle cx="930" cy="240" r="44" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>
+    <text x="930" y="247" fill="#1f2329" font-weight="600">类</text>
+    <circle cx="1060" cy="140" r="34" fill="#ffffff" stroke="#93c5fd" stroke-width="3"/>
+    <text x="1060" y="147" fill="#1f2329" font-size="16">子类</text>
+
+    <!-- entity nodes -->
+    <circle cx="300" cy="520" r="38" fill="#dbeafe"/>
+    <text x="300" y="527" fill="#1e3a8a" font-weight="600">实体</text>
+    <circle cx="150" cy="620" r="30" fill="#eef2ff" stroke="#93c5fd" stroke-width="2"/>
+    <text x="150" y="627" fill="#1e3a8a" font-size="15">实体</text>
+    <circle cx="980" cy="520" r="38" fill="#dbeafe"/>
+    <text x="980" y="527" fill="#1e3a8a" font-weight="600">实体</text>
+    <circle cx="1100" cy="620" r="30" fill="#eef2ff" stroke="#93c5fd" stroke-width="2"/>
+    <text x="1100" y="627" fill="#1e3a8a" font-size="15">实体</text>
+    <circle cx="860" cy="620" r="34" fill="#dbeafe"/>
+    <text x="860" y="627" fill="#1e3a8a" font-weight="600">实体</text>
+
+    <!-- anchor chain -->
+    <rect x="560" y="632" width="120" height="52" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+    <text x="620" y="665" fill="#1f2329" font-size="19" font-weight="600">锚点</text>
+  </g>
+
+  <g font-size="15" fill="#6b7280">
+    <text x="128" y="92">rdfs:subClassOf</text>
+    <text x="640" y="88">rdfs:domain / range</text>
+    <text x="1004" y="80">subClassOf</text>
+    <text x="636" y="300">instance-of</text>
+    <text x="400" y="330">instance-of</text>
+    <text x="120" y="400" text-anchor="start">指向权威源切片</text>
+  </g>
+</svg>
