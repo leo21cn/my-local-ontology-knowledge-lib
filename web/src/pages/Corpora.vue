@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-button type="primary" @click="dialog = true">新建库</el-button>
-    <el-table class="corpus-table" :data="corpora" border style="margin-top: 12px">
+    <el-table :key="tableVersion" row-key="corpus_id" class="corpus-table" :data="corpora" border style="margin-top: 12px">
       <el-table-column width="44">
         <template #default>
           <span class="drag-handle" style="cursor: grab; color: #909399; font-size: 16px">⠿</span>
@@ -78,6 +78,7 @@ import { api } from '../api'
 
 const corpora = ref([])
 const dialog = ref(false)
+const tableVersion = ref(0)
 let sortable = null
 const form = reactive({
   name: '', subdir: '', ontology_prefix: '', embedding_model: 'text-embedding-v4',
@@ -89,6 +90,7 @@ onMounted(load)
 
 async function load() {
   corpora.value = await api.get('/api/v1/corpora')
+  tableVersion.value += 1
   await initSortable()
 }
 
